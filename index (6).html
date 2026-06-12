@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>WB Воронка выкупов</title>
+<link href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F0EBE1;--bg2:#E8E1D4;--bg3:#FAF8F4;--card:#FFF;
+  --border:rgba(160,148,128,.22);--border2:rgba(160,148,128,.42);
+  --ink:#1A1610;--ink2:#6B6357;--ink3:#A09688;
+  --green:#2D7A4F;--red:#B84040;--amber:#A06820;--blue:#2255CC;
+  --green-bg:#E8F4EE;--red-bg:#FEE8E8;--amber-bg:#FEF3E2;--blue-bg:#EBF0FF;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Comfortaa',sans-serif;background:var(--bg);color:var(--ink);font-size:13px;min-height:100vh}
+
+/* ── Header ── */
+.hdr{background:var(--bg2);border-bottom:1px solid var(--border2);padding:0 24px;height:56px;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:100}
+.hdr-title{font-size:15px;font-weight:700}
+.hdr-sub{font-size:10px;color:var(--ink3);text-transform:uppercase;letter-spacing:.12em}
+.hdr-right{margin-left:auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.clk{font-size:11px;color:var(--ink2)}
+
+/* ── Setup overlay ── */
+.sov{display:none;position:fixed;inset:0;background:rgba(240,235,225,.96);backdrop-filter:blur(8px);z-index:200;align-items:center;justify-content:center}
+.sov.show{display:flex}
+.sc{background:var(--card);border:1px solid var(--border2);border-radius:16px;padding:30px;width:460px;box-shadow:0 8px 40px rgba(0,0,0,.1)}
+.stitle{font-size:18px;font-weight:700;margin-bottom:4px}.ssub{font-size:10px;color:var(--ink3);letter-spacing:.1em;text-transform:uppercase;margin-bottom:20px}
+.ssec{font-size:10px;font-weight:700;color:var(--ink3);text-transform:uppercase;letter-spacing:.1em;margin:14px 0 7px;padding-bottom:5px;border-bottom:1px solid var(--border)}
+.fg{margin-bottom:9px}
+.fl{font-size:10px;color:var(--ink3);text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px;font-weight:700}
+.fi{width:100%;padding:8px 12px;font-size:12px;background:var(--bg3);border:1px solid var(--border2);border-radius:7px;color:var(--ink);font-family:inherit;outline:0}
+.fi:focus{border-color:var(--ink)}
+.sbtn{width:100%;padding:11px;background:var(--ink);color:var(--bg3);border:0;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;margin-top:6px}
+.smsg{font-size:11px;margin-top:7px;text-align:center;color:var(--red)}
+
+/* ── Buttons ── */
+.btn{padding:5px 12px;background:0;border:1px solid var(--border2);border-radius:7px;font-size:11px;font-weight:700;color:var(--ink2);cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.btn:hover{background:var(--ink);color:var(--bg3);border-color:var(--ink)}
+.btn:disabled{opacity:.4;cursor:default}
+.btn-primary{background:var(--ink);color:var(--bg3);border-color:var(--ink)}
+.btn-primary:hover{opacity:.85}
+.sp{display:inline-block;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── Date range controls ── */
+.ctrl{background:var(--bg2);border-bottom:1px solid var(--border);padding:12px 24px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.ctrl label{font-size:11px;color:var(--ink2);font-weight:600}
+.dq{padding:5px 10px;font-size:12px;background:var(--bg3);border:1px solid var(--border2);border-radius:7px;color:var(--ink);font-family:inherit;outline:0}
+.dq:focus{border-color:var(--ink)}
+.preset{padding:4px 9px;border:1px solid var(--border2);border-radius:6px;font-size:10px;font-weight:700;background:0;color:var(--ink3);cursor:pointer;font-family:inherit}
+.preset:hover,.preset.on{background:var(--ink);color:var(--bg3);border-color:var(--ink)}
+.upd{font-size:10px;color:var(--ink3);margin-left:auto}
+
+/* ── Main layout ── */
+.main{padding:20px 24px;max-width:1500px;margin:0 auto}
+
+/* ── Metric cards ── */
+.mc-row{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:20px}
+.mc{background:var(--card);border:1px solid var(--border);border-radius:11px;padding:14px 16px}
+.mc-label{font-size:9px;color:var(--ink3);text-transform:uppercase;letter-spacing:.12em;font-weight:700;margin-bottom:6px}
+.mc-val{font-size:22px;font-weight:700;line-height:1}
+.mc-val.g{color:var(--green)}.mc-val.r{color:var(--red)}.mc-val.a{color:var(--amber)}.mc-val.b{color:var(--blue)}
+.mc-sub{font-size:11px;margin-top:4px;color:var(--ink3)}
+
+/* ── Conv bar ── */
+.conv-bar{background:var(--card);border:1px solid var(--border);border-radius:11px;padding:16px 20px;margin-bottom:20px}
+.conv-title{font-size:10px;font-weight:700;color:var(--ink2);text-transform:uppercase;letter-spacing:.12em;margin-bottom:12px}
+.funnel-steps{display:flex;align-items:center;gap:0}
+.f-step{flex:1;background:var(--bg3);border:1px solid var(--border);padding:10px 12px;text-align:center;position:relative}
+.f-step:first-child{border-radius:8px 0 0 8px}
+.f-step:last-child{border-radius:0 8px 8px 0}
+.f-step+.f-step{border-left:0}
+.f-num{font-size:20px;font-weight:700}
+.f-lbl{font-size:10px;color:var(--ink3);margin-top:2px}
+.f-conv{font-size:11px;font-weight:700;margin-top:4px}
+.f-conv.g{color:var(--green)}.f-conv.a{color:var(--amber)}.f-conv.r{color:var(--red)}
+.arrow{font-size:18px;color:var(--ink3);padding:0 4px;flex-shrink:0}
+
+/* ── Day summary table ── */
+.sec{margin-bottom:20px}
+.sh{display:flex;align-items:center;justify-content:space-between;padding-bottom:7px;margin-bottom:10px;border-bottom:1px solid var(--border2);flex-wrap:wrap;gap:6px}
+.st{font-size:10px;font-weight:700;color:var(--ink2);text-transform:uppercase;letter-spacing:.12em}
+.sm2{font-size:11px;color:var(--ink3)}
+
+.sw{background:var(--card);border:1px solid var(--border);border-radius:11px;overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+thead th{text-align:left;padding:8px 12px;font-size:9px;font-weight:700;color:var(--ink3);background:var(--bg3);text-transform:uppercase;letter-spacing:.1em;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none;font-family:inherit}
+thead th:hover{color:var(--ink)}
+thead th.sa{background:var(--ink);color:var(--bg3)}
+tbody td{padding:7px 12px;color:var(--ink);border-bottom:1px solid var(--border);vertical-align:middle;font-size:12px}
+tbody tr:last-child td{border-bottom:0}
+tbody tr:hover{background:var(--bg3)}
+
+/* ── Conv pill ── */
+.conv-pill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700}
+.cp-g{background:var(--green-bg);color:var(--green)}
+.cp-a{background:var(--amber-bg);color:var(--amber)}
+.cp-r{background:var(--red-bg);color:var(--red)}
+
+/* ── Status badge ── */
+.badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;white-space:nowrap}
+.b-sold{background:var(--green-bg);color:var(--green)}
+.b-wait{background:var(--amber-bg);color:var(--amber)}
+.b-cancel{background:var(--red-bg);color:var(--red)}
+.b-new{background:var(--blue-bg);color:var(--blue)}
+
+/* ── Progress bar ── */
+.pb{height:6px;background:var(--bg2);border-radius:3px;overflow:hidden;width:80px;display:inline-block;vertical-align:middle;margin-left:6px}
+.pb-fill{height:100%;border-radius:3px;transition:width .3s}
+.pb-g{background:var(--green)}.pb-a{background:var(--amber)}.pb-r{background:var(--red)}
+
+/* ── Detail table specifics ── */
+.art{font-family:monospace;font-size:11px;color:var(--ink2)}
+.tp{font-size:11px;font-weight:700;color:var(--ink2);background:var(--bg2);padding:2px 7px;border-radius:20px}
+.days-chip{font-size:11px;font-weight:700}
+
+/* ── Filter bar ── */
+.fbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+.fbar input,.fbar select{padding:6px 10px;font-size:12px;background:var(--bg3);border:1px solid var(--border2);border-radius:7px;color:var(--ink);font-family:inherit;outline:0}
+.fbar input:focus,.fbar select:focus{border-color:var(--ink)}
+
+/* ── Expand/Collapse ── */
+.er td{text-align:center;padding:10px}
+.eb{background:0;border:1px solid var(--border2);border-radius:7px;padding:5px 16px;font-size:11px;font-weight:600;color:var(--ink2);cursor:pointer;font-family:inherit}
+.eb:hover{background:var(--ink);color:var(--bg3);border-color:var(--ink)}
+.em{text-align:center;padding:28px;color:var(--ink3);font-size:12px}
+
+/* ── Error banner ── */
+.err-box{background:var(--red-bg);border:1px solid rgba(184,64,64,.3);border-radius:10px;padding:12px 16px;margin-bottom:14px;font-size:12px;color:var(--red);display:flex;gap:8px;align-items:flex-start}
+
+/* ── Loading ── */
+.lm{padding:40px;text-align:center;color:var(--ink3)}
+
+/* ── Tooltip (for status details) ── */
+.ttip{position:relative;cursor:help}
+.ttip:hover::after{content:attr(data-tip);position:absolute;bottom:100%;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg3);padding:4px 8px;border-radius:6px;font-size:10px;white-space:nowrap;z-index:10;margin-bottom:4px}
+
+/* ── Responsive ── */
+@media(max-width:900px){
+  .mc-row{grid-template-columns:repeat(3,1fr)}
+  .funnel-steps{flex-wrap:wrap}
+}
+@media(max-width:600px){
+  .mc-row{grid-template-columns:1fr 1fr}
+  .hdr-right{gap:6px}
+}
+</style>
+</head>
+<body>
+
+<!-- Setup overlay -->
+<div class="sov show" id="setup">
+<div class="sc">
+  <div class="stitle">WB Воронка выкупов</div>
+  <div class="ssub">Настройки подключения</div>
+
+  <div class="ssec">Wildberries API</div>
+  <div class="fg"><div class="fl">API-ключ (статистика)</div><input class="fi" type="password" id="sk" placeholder="eyJ..."></div>
+
+  <div class="ssec">Прокси</div>
+  <div class="fg"><div class="fl">URL прокси-воркера</div><input class="fi" id="sprx" value="https://wb-proxy.ooo6311ooo.workers.dev"></div>
+
+  <button class="sbtn" onclick="doSave()">Сохранить и загрузить</button>
+  <div class="smsg" id="smsg"></div>
+</div>
+</div>
+
+<!-- Header -->
+<div class="hdr">
+  <div>
+    <div class="hdr-title">📦 Воронка выкупов WB</div>
+    <div class="hdr-sub">Заказ → Выкуп · Детальный трекинг</div>
+  </div>
+  <div class="hdr-right">
+    <span class="clk" id="clk"></span>
+    <button class="btn btn-primary" id="load-btn" onclick="loadData()" disabled>
+      <span id="load-ic">↻</span> Загрузить
+    </button>
+    <span class="upd" id="upd-lbl"></span>
+    <button class="btn" onclick="openSetup()">⚙ Настройки</button>
+  </div>
+</div>
+
+<!-- Date controls -->
+<div class="ctrl">
+  <label>Период заказов:</label>
+  <input type="date" class="dq" id="date-from">
+  <span style="color:var(--ink3);font-size:12px">—</span>
+  <input type="date" class="dq" id="date-to">
+  <button class="preset" onclick="setPeriod(7)">7 дн</button>
+  <button class="preset" onclick="setPeriod(14)">14 дн</button>
+  <button class="preset on" id="p30" onclick="setPeriod(30)">30 дн</button>
+  <button class="preset" onclick="setPeriod(60)">60 дн</button>
+  <button class="preset" onclick="setMonth()">Текущий месяц</button>
+  <span class="upd" id="range-info"></span>
+</div>
+
+<!-- Main -->
+<div class="main" id="app">
+  <div class="lm">⚙ Введите API-ключ и нажмите «Загрузить»</div>
+</div>
+
+<script>
+/* ═══ State ═══ */
+let CFG = {key:'', proxy:'https://wb-proxy.ooo6311ooo.workers.dev'};
+let DATA = null; // {orders:[], sales:[]}
+let SORT = {tbl:'day', col:'date', dir:-1};
+let SORT2 = {col:'order_date', dir:-1};
+let EXPAND = false;
+let FILT = {art:'', status:'all'};
+
+/* ═══ Clock ═══ */
+setInterval(()=>{
+  document.getElementById('clk').textContent =
+    new Date().toLocaleDateString('ru',{day:'2-digit',month:'2-digit',year:'numeric'}) + ' · ' +
+    new Date().toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+},1000);
+
+/* ═══ Date helpers ═══ */
+const isoDate = d => d.toISOString().slice(0,10);
+const today = () => isoDate(new Date());
+const daysAgo = n => isoDate(new Date(Date.now() - n*864e5));
+
+function setPeriod(n){
+  document.getElementById('date-from').value = daysAgo(n-1);
+  document.getElementById('date-to').value = today();
+  document.querySelectorAll('.preset').forEach(b=>b.classList.remove('on'));
+  updateRangeInfo();
+}
+function setMonth(){
+  const now=new Date();
+  document.getElementById('date-from').value = now.getFullYear()+'-'+ String(now.getMonth()+1).padStart(2,'0')+'-01';
+  document.getElementById('date-to').value = today();
+  document.querySelectorAll('.preset').forEach(b=>b.classList.remove('on'));
+  updateRangeInfo();
+}
+function updateRangeInfo(){
+  const f=document.getElementById('date-from').value;
+  const t=document.getElementById('date-to').value;
+  if(f&&t){
+    const days=Math.round((new Date(t)-new Date(f))/864e5)+1;
+    document.getElementById('range-info').textContent = days+' дн выбрано';
+  }
+}
+
+/* ═══ Setup ═══ */
+function doSave(){
+  const k = document.getElementById('sk').value.trim();
+  const px = document.getElementById('sprx').value.trim();
+  if(!k){document.getElementById('smsg').textContent='Введите API-ключ';return;}
+  CFG.key = k; CFG.proxy = px||CFG.proxy;
+  try{localStorage.setItem('wbf_cfg',JSON.stringify(CFG));}catch(e){}
+  document.getElementById('setup').classList.remove('show');
+  document.getElementById('load-btn').disabled = false;
+  document.getElementById('smsg').textContent = '';
+}
+function openSetup(){
+  document.getElementById('sk').value = CFG.key;
+  document.getElementById('sprx').value = CFG.proxy;
+  document.getElementById('setup').classList.add('show');
+}
+
+/* ═══ API fetch with retry ═══ */
+let _lastReq = 0;
+async function wbGet(path){
+  const url = CFG.proxy + '?url=' + encodeURIComponent('https://statistics-api.wildberries.ru'+path);
+  const waits = [3000, 8000, 20000];
+  for(let i=0; i<=waits.length; i++){
+    const gap = Math.max(0, _lastReq + 1300 - Date.now());
+    if(gap>0) await sleep(gap);
+    let r, txt='';
+    try{
+      r = await fetch(url, {headers:{'X-WB-Token': CFG.key}});
+      txt = await r.text();
+    }catch(e){
+      if(i===waits.length) throw new Error('Сеть/прокси: '+e.message);
+      await sleep(waits[i]); continue;
+    }
+    _lastReq = Date.now();
+    if(r.status===429 || r.status>=500 || !txt.trim()){
+      if(i===waits.length) throw new Error('WB '+r.status+': не удалось получить данные после '+(waits.length+1)+' попыток');
+      const ra = parseInt(r.headers.get('retry-after')||'0',10);
+      await sleep(ra>0?ra*1000:waits[i]); continue;
+    }
+    if(!r.ok) throw new Error('WB '+r.status+': '+txt.slice(0,200));
+    try{return JSON.parse(txt);}
+    catch(e){throw new Error('Некорректный JSON: '+txt.slice(0,120));}
+  }
+}
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
+
+/* ═══ Load data ═══ */
+async function loadData(){
+  const f = document.getElementById('date-from').value;
+  const t = document.getElementById('date-to').value;
+  if(!f||!t){alert('Выберите период');return;}
+  if(!CFG.key){openSetup();return;}
+
+  const btn = document.getElementById('load-btn');
+  const ic = document.getElementById('load-ic');
+  btn.disabled = true;
+  ic.innerHTML = '<span class="sp">↻</span>';
+  document.getElementById('app').innerHTML = '<div class="lm"><span class="sp">↻</span> Загружаем заказы и выкупы...</div>';
+
+  try{
+    // Загружаем заказы за выбранный период
+    const ordFrom = f + 'T00:00:00Z';
+    // Для выкупов берём +60 дней после конца периода (выкуп может быть позже)
+    const saleFrom = f + 'T00:00:00Z';
+
+    const [ordRaw, saleRaw] = await Promise.all([
+      wbGet('/api/v1/supplier/orders?dateFrom='+encodeURIComponent(ordFrom)+'&flag=0'),
+      wbGet('/api/v1/supplier/sales?dateFrom='+encodeURIComponent(saleFrom)+'&flag=0')
+    ]);
+
+    const orders = Array.isArray(ordRaw) ? ordRaw : [];
+    const sales  = Array.isArray(saleRaw) ? saleRaw : [];
+
+    // Фильтруем заказы по выбранному диапазону
+    const filtered = orders.filter(o=>{
+      const d = (o.date||'').slice(0,10);
+      return d >= f && d <= t;
+    });
+
+    DATA = {orders: filtered, sales, dateFrom: f, dateTo: t};
+    render();
+    document.getElementById('upd-lbl').textContent = 'обновлено ' + new Date().toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'});
+  }catch(e){
+    document.getElementById('app').innerHTML =
+      `<div class="err-box">⚠️ ${e.message}</div>`;
+  }finally{
+    btn.disabled = false;
+    ic.textContent = '↻';
+  }
+}
+
+/* ═══ Matching logic ═══
+   WB: заказ имеет поле odid (число) — уникальный ID.
+   Продажа также имеет odid. Связываем по odid.
+   Если odid отсутствует — матчим по supplierArticle+techSize+дата (fallback).
+*/
+function buildFunnel(orders, sales){
+  // Индекс продаж по odid
+  const saleByOdid = {};
+  const saleByKey  = {}; // fallback
+  for(const s of sales){
+    if(s.saleID && !s.saleID.startsWith('R')) continue; // только реальные продажи (не возвраты)
+    const oid = s.odid;
+    if(oid) saleByOdid[oid] = s;
+    // fallback key: артикул+размер+дата продажи (может быть дубликат, но лучше чем ничего)
+    const fk = (s.supplierArticle||'')+'|'+(s.techSize||'')+'|'+(s.date||'').slice(0,10);
+    if(!saleByKey[fk]) saleByKey[fk] = [];
+    saleByKey[fk].push(s);
+  }
+
+  // Индекс возвратов (saleID начинается с R)
+  const returnByOdid = {};
+  for(const s of sales){
+    if(s.saleID && s.saleID.startsWith('R') && s.odid) returnByOdid[s.odid] = s;
+  }
+
+  return orders.map(o=>{
+    const odid = o.odid;
+    let sale = null, isReturn = false;
+
+    if(odid && saleByOdid[odid]){
+      sale = saleByOdid[odid];
+    } else if(!odid){
+      // Fallback: ищем ближайшую продажу того же артикула+размера после даты заказа
+      const art = o.supplierArticle||'';
+      const sz  = o.techSize||'';
+      const oDate = new Date(o.date||0);
+      let best = null, bestDiff = Infinity;
+      for(const s of sales){
+        if(s.saleID && s.saleID.startsWith('R')) continue;
+        if((s.supplierArticle||'')===art && (s.techSize||'')===sz){
+          const sd = new Date(s.date||0);
+          const diff = sd - oDate;
+          if(diff >= 0 && diff < bestDiff){bestDiff=diff;best=s;}
+        }
+      }
+      if(best && bestDiff < 30*864e5) sale = best;
+    }
+
+    // Проверяем возврат
+    if(odid && returnByOdid[odid]){ isReturn = true; }
+
+    // Статус
+    let status;
+    if(o.isCancel) status = 'cancel';
+    else if(sale && isReturn) status = 'returned';
+    else if(sale) status = 'sold';
+    else {
+      // Заказ без продажи — ждём или отменён
+      const orderDate = new Date(o.date||0);
+      const daysSince = (Date.now() - orderDate) / 864e5;
+      status = daysSince > 21 ? 'cancel' : 'waiting';
+    }
+
+    const orderDate = (o.date||'').slice(0,10);
+    const saleDate  = sale ? (sale.date||'').slice(0,10) : null;
+    const daysToSale = sale && saleDate && orderDate
+      ? Math.round((new Date(saleDate) - new Date(orderDate)) / 864e5)
+      : null;
+
+    return {
+      order_date : orderDate,
+      order_time : o.date ? new Date(o.date).toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'}) : '—',
+      art        : o.supplierArticle || '—',
+      size       : o.techSize || '—',
+      name       : o.subject || o.category || '—',
+      price      : o.finishedPrice || o.priceWithDisc || o.totalPrice || 0,
+      wh         : o.warehouseName || '—',
+      odid       : odid || null,
+      status,
+      sale_date  : saleDate,
+      sale_price : sale ? (sale.finishedPrice||sale.priceWithDisc||sale.totalPrice||0) : null,
+      days_to_sale: daysToSale,
+      region     : o.regionName || o.oblast || '—',
+    };
+  });
+}
+
+/* ═══ Aggregation by day ═══ */
+function aggByDay(rows){
+  const m = {};
+  for(const r of rows){
+    const d = r.order_date;
+    if(!m[d]) m[d]={date:d,total:0,sold:0,waiting:0,cancel:0,returned:0,revenue:0,daysSum:0,daysCnt:0};
+    m[d].total++;
+    m[d][r.status]++;
+    if(r.status==='sold'||r.status==='returned'){
+      m[d].revenue += r.sale_price||0;
+      if(r.days_to_sale!=null){m[d].daysSum+=r.days_to_sale;m[d].daysCnt++;}
+    }
+  }
+  return Object.values(m).map(d=>({
+    ...d,
+    conv: d.total>0 ? Math.round((d.sold+d.returned)/d.total*100) : 0,
+    avg_days: d.daysCnt>0 ? (d.daysSum/d.daysCnt).toFixed(1) : null
+  }));
+}
+
+/* ═══ Render ═══ */
+function render(){
+  if(!DATA) return;
+  const rows = buildFunnel(DATA.orders, DATA.sales);
+  const days  = aggByDay(rows);
+
+  // Global metrics
+  const total    = rows.length;
+  const sold     = rows.filter(r=>r.status==='sold').length;
+  const waiting  = rows.filter(r=>r.status==='waiting').length;
+  const cancel   = rows.filter(r=>r.status==='cancel').length;
+  const returned = rows.filter(r=>r.status==='returned').length;
+  const conv     = total>0?Math.round((sold+returned)/total*100):0;
+  const revenue  = rows.filter(r=>r.status==='sold'||r.status==='returned').reduce((s,r)=>s+(r.sale_price||0),0);
+  const dArr     = rows.filter(r=>r.days_to_sale!=null).map(r=>r.days_to_sale);
+  const avgDays  = dArr.length>0?(dArr.reduce((a,b)=>a+b,0)/dArr.length).toFixed(1):null;
+
+  const convCls = conv>=60?'g':conv>=40?'a':'r';
+
+  let html = '';
+
+  // ── Metric cards ──
+  html += `<div class="mc-row">
+    <div class="mc"><div class="mc-label">Всего заказов</div><div class="mc-val">${total}</div><div class="mc-sub">${DATA.dateFrom} — ${DATA.dateTo}</div></div>
+    <div class="mc"><div class="mc-label">Выкуплено</div><div class="mc-val g">${sold}</div><div class="mc-sub">${conv}% конверсия</div></div>
+    <div class="mc"><div class="mc-label">В ожидании</div><div class="mc-val a">${waiting}</div><div class="mc-sub">заказ в пути / на ПВЗ</div></div>
+    <div class="mc"><div class="mc-label">Отменено / не выкуплено</div><div class="mc-val r">${cancel}</div><div class="mc-sub">включая возвраты: ${returned}</div></div>
+    <div class="mc"><div class="mc-label">Сумма выкупов</div><div class="mc-val b" style="font-size:17px">${fmtRub(revenue)}</div><div class="mc-sub">ср. время выкупа: ${avgDays!=null?avgDays+' дн':'—'}</div></div>
+  </div>`;
+
+  // ── Funnel ──
+  const waitPct  = total>0?Math.round(waiting/total*100):0;
+  const cancelPct= total>0?Math.round(cancel/total*100):0;
+  html += `<div class="conv-bar">
+    <div class="conv-title">Воронка: Заказ → Выкуп</div>
+    <div class="funnel-steps">
+      <div class="f-step"><div class="f-num">${total}</div><div class="f-lbl">Заказов</div><div class="f-conv">100%</div></div>
+      <div class="arrow">›</div>
+      <div class="f-step"><div class="f-num" style="color:var(--amber)">${waiting}</div><div class="f-lbl">В ожидании</div><div class="f-conv a">${waitPct}%</div></div>
+      <div class="arrow">›</div>
+      <div class="f-step"><div class="f-num" style="color:var(--green)">${sold}</div><div class="f-lbl">Выкуплено</div><div class="f-conv ${convCls}">${conv}%</div></div>
+      <div class="arrow">›</div>
+      <div class="f-step"><div class="f-num" style="color:var(--red)">${returned}</div><div class="f-lbl">Возвращено</div><div class="f-conv r">${total>0?Math.round(returned/total*100):0}%</div></div>
+      <div class="arrow">›</div>
+      <div class="f-step"><div class="f-num" style="color:var(--red)">${cancel}</div><div class="f-lbl">Отменено</div><div class="f-conv r">${cancelPct}%</div></div>
+    </div>
+  </div>`;
+
+  // ── Day summary ──
+  html += buildDayTable(days, total);
+
+  // ── Detail table ──
+  html += buildDetailTable(rows);
+
+  document.getElementById('app').innerHTML = html;
+}
+
+/* ═══ Day table ═══ */
+function buildDayTable(days, grandTotal){
+  const {col,dir} = SORT;
+  const sorted = [...days].sort((a,b)=>{
+    let va=a[col],vb=b[col];
+    if(col==='date'){va=va||'';vb=vb||'';}
+    return (va<vb?-1:va>vb?1:0)*dir;
+  });
+  const ar=k=>SORT.col===k?(SORT.dir>0?' ↑':' ↓'):' ↕';
+  const sc=k=>SORT.col===k?' sa':'';
+
+  const rows = sorted.map(d=>{
+    const cc=d.conv>=60?'cp-g':d.conv>=40?'cp-a':'cp-r';
+    const pw=d.total>0?Math.round((d.sold+d.returned)/d.total*100):0;
+    const barCls=d.conv>=60?'pb-g':d.conv>=40?'pb-a':'pb-r';
+    return `<tr>
+      <td><span class="tp">${d.date}</span></td>
+      <td style="font-weight:700">${d.total}</td>
+      <td style="color:var(--green);font-weight:700">${d.sold}</td>
+      <td style="color:var(--amber)">${d.waiting}</td>
+      <td style="color:var(--red)">${d.cancel}</td>
+      <td style="color:var(--red)">${d.returned}</td>
+      <td><span class="conv-pill ${cc}">${d.conv}%</span><span class="pb"><span class="pb-fill ${barCls}" style="width:${pw}%"></span></span></td>
+      <td style="color:var(--blue);font-weight:600">${fmtRub(d.revenue)}</td>
+      <td>${d.avg_days!=null?d.avg_days+' дн':'—'}</td>
+    </tr>`;
+  }).join('');
+
+  return `<div class="sec">
+    <div class="sh"><span class="st">Сводка по дням</span><span class="sm2">${days.length} дней</span></div>
+    <div class="sw"><table>
+      <thead><tr>
+        <th onclick="srtDay('date')" class="${sc('date')}">Дата${ar('date')}</th>
+        <th onclick="srtDay('total')" class="${sc('total')}">Заказов${ar('total')}</th>
+        <th onclick="srtDay('sold')" class="${sc('sold')}">Выкупил${ar('sold')}</th>
+        <th onclick="srtDay('waiting')" class="${sc('waiting')}">Ждут${ar('waiting')}</th>
+        <th onclick="srtDay('cancel')" class="${sc('cancel')}">Отменено${ar('cancel')}</th>
+        <th onclick="srtDay('returned')" class="${sc('returned')}">Возврат${ar('returned')}</th>
+        <th onclick="srtDay('conv')" class="${sc('conv')}">Конверсия${ar('conv')}</th>
+        <th onclick="srtDay('revenue')" class="${sc('revenue')}">Выручка${ar('revenue')}</th>
+        <th onclick="srtDay('avg_days')" class="${sc('avg_days')}">Ср. дней до выкупа${ar('avg_days')}</th>
+      </tr></thead>
+      <tbody>${rows||'<tr><td colspan="9" class="em">Нет данных</td></tr>'}</tbody>
+    </table></div>
+  </div>`;
+}
+function srtDay(col){
+  SORT.dir = SORT.col===col ? SORT.dir*-1 : -1;
+  SORT.col = col;
+  if(!DATA) return;
+  const rows = buildFunnel(DATA.orders, DATA.sales);
+  const days = aggByDay(rows);
+  document.querySelector('.sw') && render(); // full re-render for simplicity
+}
+
+/* ═══ Detail table ═══ */
+function buildDetailTable(allRows){
+  const {col,dir} = SORT2;
+
+  // Apply filters
+  let rows = allRows;
+  if(FILT.art.trim()){
+    const q = FILT.art.trim().toLowerCase();
+    rows = rows.filter(r=>r.art.toLowerCase().includes(q)||r.name.toLowerCase().includes(q));
+  }
+  if(FILT.status!=='all') rows = rows.filter(r=>r.status===FILT.status);
+
+  const sorted = [...rows].sort((a,b)=>{
+    let va=a[col]??'',vb=b[col]??'';
+    if(col==='price'||col==='sale_price'||col==='days_to_sale'){va=va||0;vb=vb||0;}
+    return (va<vb?-1:va>vb?1:0)*dir;
+  });
+
+  const LIMIT = 50;
+  const show = EXPAND ? sorted : sorted.slice(0,LIMIT);
+
+  const ar=k=>SORT2.col===k?(SORT2.dir>0?' ↑':' ↓'):' ↕';
+  const sc=k=>SORT2.col===k?' sa':'';
+
+  const statusBadge = s => ({
+    sold:     '<span class="badge b-sold">✓ Выкуплен</span>',
+    waiting:  '<span class="badge b-wait">⏳ Ждём</span>',
+    cancel:   '<span class="badge b-cancel">✗ Отменён</span>',
+    returned: '<span class="badge b-cancel">↩ Возврат</span>',
+    new:      '<span class="badge b-new">🆕 Новый</span>',
+  })[s] || s;
+
+  const tableRows = show.map(r=>{
+    const dc = r.days_to_sale!=null
+      ? (r.days_to_sale<=3?'<span class="days-chip" style="color:var(--green)">'+r.days_to_sale+' дн</span>'
+        :r.days_to_sale<=7?'<span class="days-chip" style="color:var(--amber)">'+r.days_to_sale+' дн</span>'
+        :'<span class="days-chip" style="color:var(--red)">'+r.days_to_sale+' дн</span>')
+      : '—';
+    return `<tr>
+      <td><span class="tp">${r.order_date}</span> <span style="color:var(--ink3);font-size:10px">${r.order_time}</span></td>
+      <td><span class="art">${r.art}</span></td>
+      <td>${r.size}</td>
+      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.name}">${r.name}</td>
+      <td style="font-weight:700">${r.price>0?fmtRub(r.price):'—'}</td>
+      <td>${statusBadge(r.status)}</td>
+      <td>${r.sale_date||'—'}</td>
+      <td style="font-weight:${r.sale_price?700:400};color:${r.sale_price?'var(--blue)':'var(--ink3)'}">${r.sale_price!=null?fmtRub(r.sale_price):'—'}</td>
+      <td>${dc}</td>
+      <td style="font-size:11px;color:var(--ink3)">${r.wh}</td>
+    </tr>`;
+  }).join('');
+
+  const expBtn = sorted.length>LIMIT
+    ? `<tr class="er"><td colspan="10"><button class="eb" onclick="toggleExpand()">${EXPAND?'▲ Свернуть':'▼ Показать все '+sorted.length+' строк'}</button></td></tr>`
+    : '';
+
+  const statusOptions = ['all','sold','waiting','cancel','returned']
+    .map(s=>`<option value="${s}" ${FILT.status===s?'selected':''}>${{all:'Все статусы',sold:'Выкуплено',waiting:'Ждём',cancel:'Отменено',returned:'Возврат'}[s]}</option>`)
+    .join('');
+
+  return `<div class="sec">
+    <div class="sh"><span class="st">Детали по каждому заказу</span><span class="sm2">${rows.length} из ${allRows.length}</span></div>
+    <div class="fbar">
+      <input placeholder="🔎 Артикул или товар" value="${FILT.art}" oninput="setFilt('art',this.value)" style="width:200px">
+      <select onchange="setFilt('status',this.value)">${statusOptions}</select>
+      <span style="font-size:11px;color:var(--ink3);margin-left:4px">
+        <span style="color:var(--green)">■</span> выкуплен &nbsp;
+        <span style="color:var(--amber)">■</span> ждём &nbsp;
+        <span style="color:var(--red)">■</span> отмена/возврат
+      </span>
+    </div>
+    <div class="sw"><table>
+      <thead><tr>
+        <th onclick="srtDetail('order_date')" class="${sc('order_date')}">Дата заказа${ar('order_date')}</th>
+        <th onclick="srtDetail('art')" class="${sc('art')}">Артикул${ar('art')}</th>
+        <th>Размер</th>
+        <th>Товар</th>
+        <th onclick="srtDetail('price')" class="${sc('price')}">Цена заказа${ar('price')}</th>
+        <th onclick="srtDetail('status')" class="${sc('status')}">Статус${ar('status')}</th>
+        <th onclick="srtDetail('sale_date')" class="${sc('sale_date')}">Дата выкупа${ar('sale_date')}</th>
+        <th onclick="srtDetail('sale_price')" class="${sc('sale_price')}">Сумма выкупа${ar('sale_price')}</th>
+        <th onclick="srtDetail('days_to_sale')" class="${sc('days_to_sale')}">Дней до выкупа${ar('days_to_sale')}</th>
+        <th>Склад</th>
+      </tr></thead>
+      <tbody>${tableRows||'<tr><td colspan="10" class="em">Нет заказов по фильтру</td></tr>'}${expBtn}</tbody>
+    </table></div>
+  </div>`;
+}
+
+function srtDetail(col){
+  SORT2.dir = SORT2.col===col ? SORT2.dir*-1 : -1;
+  SORT2.col = col;
+  if(DATA) render();
+}
+function setFilt(k,v){FILT[k]=v;EXPAND=false;if(DATA)render();}
+function toggleExpand(){EXPAND=!EXPAND;if(DATA)render();}
+
+/* ═══ Formatters ═══ */
+const fmtRub = v => Math.round(v).toLocaleString('ru') + ' ₽';
+
+/* ═══ Init ═══ */
+window.onload = ()=>{
+  // Defaults: last 30 days
+  document.getElementById('date-from').value = daysAgo(29);
+  document.getElementById('date-to').value   = today();
+  updateRangeInfo();
+
+  document.getElementById('date-from').addEventListener('change', updateRangeInfo);
+  document.getElementById('date-to').addEventListener('change', updateRangeInfo);
+
+  // Load saved config
+  try{
+    const s = JSON.parse(localStorage.getItem('wbf_cfg')||'{}');
+    if(s.key){ CFG.key=s.key; }
+    if(s.proxy){ CFG.proxy=s.proxy; }
+    if(s.key){
+      document.getElementById('setup').classList.remove('show');
+      document.getElementById('load-btn').disabled = false;
+      document.getElementById('app').innerHTML =
+        '<div class="lm">Ключ загружен. Нажмите <b>↻ Загрузить</b> чтобы получить данные.</div>';
+    }
+  }catch(e){}
+};
+</script>
+</body>
+</html>
