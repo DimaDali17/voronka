@@ -334,7 +334,11 @@ async function loadCab(cab,f,t){
   document.getElementById(appId).innerHTML='<div class="lm"><span class="sp">↻</span> Загружаем кабинет '+(cab===1?'Easyform':'EZFR')+'...</div>';
   try{
     const ordFrom=f+'T00:00:00Z';
-    const saleFrom=f+'T00:00:00Z';
+    // Sales load from 60 days BEFORE period start:
+    // orders placed before the selected period may be redeemed inside it.
+    // We never match a sale whose date < order.date, so extra records are harmless.
+    const saleFromDate=isoDate(new Date(new Date(f).getTime()-60*864e5));
+    const saleFrom=saleFromDate+'T00:00:00Z';
     const [ordRaw,saleRaw]=await Promise.all([
       wbGet('/api/v1/supplier/orders?dateFrom='+encodeURIComponent(ordFrom)+'&flag=0',cab),
       wbGet('/api/v1/supplier/sales?dateFrom='+encodeURIComponent(saleFrom)+'&flag=0',cab)
@@ -349,7 +353,14 @@ async function loadCab(cab,f,t){
   }
 }
 
-/* ═══ Funnel matching ═══ */
+/* ═══ Funnel matching ═══
+   Rules that prevent false positives:
+   1. odid match: sale.date must be >= order.date (a redemption cannot precede the order).
+   2. Fallback (no odid): sale.date must be strictly AFTER order.date (diff > 0)
+      AND within 60 days. Same-day matches without odid are rejected because they
+      are almost certainly unrelated transactions with the same article+size.
+   3. Returns (saleID starts with "R") are indexed separately and never treated as sales.
+═══ */
 function buildFunnel(orders,sales){
   const saleByOdid={};
   const returnByOdid={};
@@ -360,21 +371,30 @@ function buildFunnel(orders,sales){
   }
   return orders.map(o=>{
     const odid=o.odid;
+    const oDate=new Date(o.date||0);
     let sale=null,isReturn=false;
-    if(odid&&saleByOdid[odid]) sale=saleByOdid[odid];
-    else if(!odid){
+
+    // Primary match: by odid, sale must be on or after the order date
+    if(odid&&saleByOdid[odid]){
+      const candidate=saleByOdid[odid];
+      if(new Date(candidate.date||0)>=oDate) sale=candidate;
+    }
+
+    // Fallback match: by article+size, sale strictly AFTER order (diff > 0), within 60 days
+    if(!sale&&!odid){
       const art=o.supplierArticle||'',sz=o.techSize||'';
-      const oDate=new Date(o.date||0);
       let best=null,bestDiff=Infinity;
       for(const s of sales){
         if(s.saleID&&s.saleID.startsWith('R')) continue;
         if((s.supplierArticle||'')===art&&(s.techSize||'')===sz){
           const sd=new Date(s.date||0),diff=sd-oDate;
-          if(diff>=0&&diff<bestDiff){bestDiff=diff;best=s;}
+          // diff must be > 0: redemption strictly after order, within 60 days
+          if(diff>0&&diff<60*864e5&&diff<bestDiff){bestDiff=diff;best=s;}
         }
       }
-      if(best&&bestDiff<30*864e5) sale=best;
+      sale=best||null;
     }
+
     if(odid&&returnByOdid[odid]) isReturn=true;
 
     let status;
