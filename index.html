@@ -15,18 +15,17 @@
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Comfortaa',sans-serif;background:var(--bg);color:var(--ink);font-size:13px;min-height:100vh}
 
-/* ── Header ── */
 .hdr{background:var(--bg2);border-bottom:1px solid var(--border2);padding:0 24px;height:56px;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:100}
 .hdr-title{font-size:15px;font-weight:700}
 .hdr-sub{font-size:10px;color:var(--ink3);text-transform:uppercase;letter-spacing:.12em}
 .hdr-right{margin-left:auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .clk{font-size:11px;color:var(--ink2)}
 
-/* ── Setup overlay ── */
 .sov{display:none;position:fixed;inset:0;background:rgba(240,235,225,.96);backdrop-filter:blur(8px);z-index:200;align-items:center;justify-content:center}
 .sov.show{display:flex}
-.sc{background:var(--card);border:1px solid var(--border2);border-radius:16px;padding:30px;width:460px;box-shadow:0 8px 40px rgba(0,0,0,.1)}
-.stitle{font-size:18px;font-weight:700;margin-bottom:4px}.ssub{font-size:10px;color:var(--ink3);letter-spacing:.1em;text-transform:uppercase;margin-bottom:20px}
+.sc{background:var(--card);border:1px solid var(--border2);border-radius:16px;padding:30px;width:480px;box-shadow:0 8px 40px rgba(0,0,0,.1);max-height:90vh;overflow-y:auto}
+.stitle{font-size:18px;font-weight:700;margin-bottom:4px}
+.ssub{font-size:10px;color:var(--ink3);letter-spacing:.1em;text-transform:uppercase;margin-bottom:20px}
 .ssec{font-size:10px;font-weight:700;color:var(--ink3);text-transform:uppercase;letter-spacing:.1em;margin:14px 0 7px;padding-bottom:5px;border-bottom:1px solid var(--border)}
 .fg{margin-bottom:9px}
 .fl{font-size:10px;color:var(--ink3);text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px;font-weight:700}
@@ -35,7 +34,6 @@ body{font-family:'Comfortaa',sans-serif;background:var(--bg);color:var(--ink);fo
 .sbtn{width:100%;padding:11px;background:var(--ink);color:var(--bg3);border:0;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;margin-top:6px}
 .smsg{font-size:11px;margin-top:7px;text-align:center;color:var(--red)}
 
-/* ── Buttons ── */
 .btn{padding:5px 12px;background:0;border:1px solid var(--border2);border-radius:7px;font-size:11px;font-weight:700;color:var(--ink2);cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
 .btn:hover{background:var(--ink);color:var(--bg3);border-color:var(--ink)}
 .btn:disabled{opacity:.4;cursor:default}
@@ -44,19 +42,21 @@ body{font-family:'Comfortaa',sans-serif;background:var(--bg);color:var(--ink);fo
 .sp{display:inline-block;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 
-/* ── Date range controls ── */
+/* Tabs */
+.tabs{display:flex;gap:2px;background:var(--bg);border-radius:8px;padding:3px}
+.tab{padding:5px 14px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;border:none;background:0;color:var(--ink3);font-family:inherit;white-space:nowrap}
+.tab.on{background:var(--ink);color:var(--bg3)}
+
 .ctrl{background:var(--bg2);border-bottom:1px solid var(--border);padding:12px 24px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .ctrl label{font-size:11px;color:var(--ink2);font-weight:600}
 .dq{padding:5px 10px;font-size:12px;background:var(--bg3);border:1px solid var(--border2);border-radius:7px;color:var(--ink);font-family:inherit;outline:0}
 .dq:focus{border-color:var(--ink)}
 .preset{padding:4px 9px;border:1px solid var(--border2);border-radius:6px;font-size:10px;font-weight:700;background:0;color:var(--ink3);cursor:pointer;font-family:inherit}
 .preset:hover,.preset.on{background:var(--ink);color:var(--bg3);border-color:var(--ink)}
-.upd{font-size:10px;color:var(--ink3);margin-left:auto}
+.upd{font-size:10px;color:var(--ink3)}
 
-/* ── Main layout ── */
 .main{padding:20px 24px;max-width:1500px;margin:0 auto}
 
-/* ── Metric cards ── */
 .mc-row{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:20px}
 .mc{background:var(--card);border:1px solid var(--border);border-radius:11px;padding:14px 16px}
 .mc-label{font-size:9px;color:var(--ink3);text-transform:uppercase;letter-spacing:.12em;font-weight:700;margin-bottom:6px}
@@ -64,11 +64,10 @@ body{font-family:'Comfortaa',sans-serif;background:var(--bg);color:var(--ink);fo
 .mc-val.g{color:var(--green)}.mc-val.r{color:var(--red)}.mc-val.a{color:var(--amber)}.mc-val.b{color:var(--blue)}
 .mc-sub{font-size:11px;margin-top:4px;color:var(--ink3)}
 
-/* ── Conv bar ── */
 .conv-bar{background:var(--card);border:1px solid var(--border);border-radius:11px;padding:16px 20px;margin-bottom:20px}
 .conv-title{font-size:10px;font-weight:700;color:var(--ink2);text-transform:uppercase;letter-spacing:.12em;margin-bottom:12px}
 .funnel-steps{display:flex;align-items:center;gap:0}
-.f-step{flex:1;background:var(--bg3);border:1px solid var(--border);padding:10px 12px;text-align:center;position:relative}
+.f-step{flex:1;background:var(--bg3);border:1px solid var(--border);padding:10px 12px;text-align:center}
 .f-step:first-child{border-radius:8px 0 0 8px}
 .f-step:last-child{border-radius:0 8px 8px 0}
 .f-step+.f-step{border-left:0}
@@ -78,7 +77,6 @@ body{font-family:'Comfortaa',sans-serif;background:var(--bg);color:var(--ink);fo
 .f-conv.g{color:var(--green)}.f-conv.a{color:var(--amber)}.f-conv.r{color:var(--red)}
 .arrow{font-size:18px;color:var(--ink3);padding:0 4px;flex-shrink:0}
 
-/* ── Day summary table ── */
 .sec{margin-bottom:20px}
 .sh{display:flex;align-items:center;justify-content:space-between;padding-bottom:7px;margin-bottom:10px;border-bottom:1px solid var(--border2);flex-wrap:wrap;gap:6px}
 .st{font-size:10px;font-weight:700;color:var(--ink2);text-transform:uppercase;letter-spacing:.12em}
@@ -93,76 +91,60 @@ tbody td{padding:7px 12px;color:var(--ink);border-bottom:1px solid var(--border)
 tbody tr:last-child td{border-bottom:0}
 tbody tr:hover{background:var(--bg3)}
 
-/* ── Conv pill ── */
 .conv-pill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700}
 .cp-g{background:var(--green-bg);color:var(--green)}
 .cp-a{background:var(--amber-bg);color:var(--amber)}
 .cp-r{background:var(--red-bg);color:var(--red)}
 
-/* ── Status badge ── */
 .badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;white-space:nowrap}
 .b-sold{background:var(--green-bg);color:var(--green)}
 .b-wait{background:var(--amber-bg);color:var(--amber)}
 .b-cancel{background:var(--red-bg);color:var(--red)}
 .b-new{background:var(--blue-bg);color:var(--blue)}
 
-/* ── Progress bar ── */
 .pb{height:6px;background:var(--bg2);border-radius:3px;overflow:hidden;width:80px;display:inline-block;vertical-align:middle;margin-left:6px}
 .pb-fill{height:100%;border-radius:3px;transition:width .3s}
 .pb-g{background:var(--green)}.pb-a{background:var(--amber)}.pb-r{background:var(--red)}
 
-/* ── Detail table specifics ── */
 .art{font-family:monospace;font-size:11px;color:var(--ink2)}
 .tp{font-size:11px;font-weight:700;color:var(--ink2);background:var(--bg2);padding:2px 7px;border-radius:20px}
 .days-chip{font-size:11px;font-weight:700}
 
-/* ── Filter bar ── */
 .fbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
 .fbar input,.fbar select{padding:6px 10px;font-size:12px;background:var(--bg3);border:1px solid var(--border2);border-radius:7px;color:var(--ink);font-family:inherit;outline:0}
 .fbar input:focus,.fbar select:focus{border-color:var(--ink)}
 
-/* ── Expand/Collapse ── */
 .er td{text-align:center;padding:10px}
 .eb{background:0;border:1px solid var(--border2);border-radius:7px;padding:5px 16px;font-size:11px;font-weight:600;color:var(--ink2);cursor:pointer;font-family:inherit}
 .eb:hover{background:var(--ink);color:var(--bg3);border-color:var(--ink)}
 .em{text-align:center;padding:28px;color:var(--ink3);font-size:12px}
 
-/* ── Error banner ── */
 .err-box{background:var(--red-bg);border:1px solid rgba(184,64,64,.3);border-radius:10px;padding:12px 16px;margin-bottom:14px;font-size:12px;color:var(--red);display:flex;gap:8px;align-items:flex-start}
-
-/* ── Loading ── */
 .lm{padding:40px;text-align:center;color:var(--ink3)}
 
-/* ── Tooltip (for status details) ── */
-.ttip{position:relative;cursor:help}
-.ttip:hover::after{content:attr(data-tip);position:absolute;bottom:100%;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg3);padding:4px 8px;border-radius:6px;font-size:10px;white-space:nowrap;z-index:10;margin-bottom:4px}
-
-/* ── Responsive ── */
-@media(max-width:900px){
-  .mc-row{grid-template-columns:repeat(3,1fr)}
-  .funnel-steps{flex-wrap:wrap}
-}
-@media(max-width:600px){
-  .mc-row{grid-template-columns:1fr 1fr}
-  .hdr-right{gap:6px}
-}
+@media(max-width:900px){.mc-row{grid-template-columns:repeat(3,1fr)}.funnel-steps{flex-wrap:wrap}}
+@media(max-width:600px){.mc-row{grid-template-columns:1fr 1fr}.hdr-right{gap:6px}}
 </style>
 </head>
 <body>
 
-<!-- Setup overlay -->
+<!-- Setup -->
 <div class="sov show" id="setup">
 <div class="sc">
   <div class="stitle">WB Воронка выкупов</div>
   <div class="ssub">Настройки подключения</div>
 
-  <div class="ssec">Wildberries API</div>
-  <div class="fg"><div class="fl">API-ключ (статистика)</div><input class="fi" type="password" id="sk" placeholder="eyJ..."></div>
+  <div class="ssec">Кабинет 1 — Easyform</div>
+  <div class="fg"><div class="fl">API-ключ EF</div><input class="fi" type="password" id="sk1" placeholder="eyJ..."></div>
+
+  <div class="ssec">Кабинет 2 — EZFR</div>
+  <div class="fg"><div class="fl">API-ключ EZFR</div><input class="fi" type="password" id="sk2" placeholder="eyJ..."></div>
 
   <div class="ssec">Прокси</div>
-  <div class="fg"><div class="fl">URL прокси-воркера</div><input class="fi" id="sprx" value="https://wb-proxy.ooo6311ooo.workers.dev"></div>
+  <div class="fg"><div class="fl">Прокси 1 — для EF</div><input class="fi" id="sprx" value="https://wb-proxy.ooo6311ooo.workers.dev"></div>
+  <div class="fg"><div class="fl">Прокси 2 — для EZFR (другой аккаунт CF)</div><input class="fi" id="sprx2" placeholder="https://wb-proxy-2.xxx.workers.dev"></div>
 
-  <button class="sbtn" onclick="doSave()">Сохранить и загрузить</button>
+  <button class="sbtn" onclick="doSave()">Сохранить</button>
   <div class="smsg" id="smsg"></div>
 </div>
 </div>
@@ -175,7 +157,11 @@ tbody tr:hover{background:var(--bg3)}
   </div>
   <div class="hdr-right">
     <span class="clk" id="clk"></span>
-    <button class="btn btn-primary" id="load-btn" onclick="loadData()" disabled>
+    <div class="tabs">
+      <button class="tab on" id="tab1" onclick="goTab(1)">Easyform</button>
+      <button class="tab"    id="tab2" onclick="goTab(2)">EZFR</button>
+    </div>
+    <button class="btn btn-primary" id="load-btn" onclick="loadData()">
       <span id="load-ic">↻</span> Загрузить
     </button>
     <span class="upd" id="upd-lbl"></span>
@@ -191,25 +177,27 @@ tbody tr:hover{background:var(--bg3)}
   <input type="date" class="dq" id="date-to">
   <button class="preset" onclick="setPeriod(7)">7 дн</button>
   <button class="preset" onclick="setPeriod(14)">14 дн</button>
-  <button class="preset on" id="p30" onclick="setPeriod(30)">30 дн</button>
+  <button class="preset on" onclick="setPeriod(30)">30 дн</button>
   <button class="preset" onclick="setPeriod(60)">60 дн</button>
   <button class="preset" onclick="setMonth()">Текущий месяц</button>
   <span class="upd" id="range-info"></span>
 </div>
 
-<!-- Main -->
-<div class="main" id="app">
-  <div class="lm">⚙ Введите API-ключ и нажмите «Загрузить»</div>
-</div>
+<!-- Views per cabinet -->
+<div class="main" id="app1"><div class="lm">⚙ Введите API-ключи и нажмите «Загрузить»</div></div>
+<div class="main" id="app2" style="display:none"><div class="lm">⚙ Введите API-ключи и нажмите «Загрузить»</div></div>
 
 <script>
-/* ═══ State ═══ */
-let CFG = {key:'', proxy:'https://wb-proxy.ooo6311ooo.workers.dev'};
-let DATA = null; // {orders:[], sales:[]}
-let SORT = {tbl:'day', col:'date', dir:-1};
-let SORT2 = {col:'order_date', dir:-1};
-let EXPAND = false;
-let FILT = {art:'', status:'all'};
+/* ═══ Config & State ═══ */
+let CFG = {key1:'', key2:'', proxy1:'https://wb-proxy.ooo6311ooo.workers.dev', proxy2:''};
+let DATA = {1:null, 2:null};
+let CUR_TAB = 1;
+
+// Per-cabinet UI state
+const SORT  = {1:{col:'date',dir:-1}, 2:{col:'date',dir:-1}};
+const SORT2 = {1:{col:'order_date',dir:-1}, 2:{col:'order_date',dir:-1}};
+const EXPAND= {1:false, 2:false};
+const FILT  = {1:{art:'',status:'all'}, 2:{art:'',status:'all'}};
 
 /* ═══ Clock ═══ */
 setInterval(()=>{
@@ -220,19 +208,33 @@ setInterval(()=>{
 
 /* ═══ Date helpers ═══ */
 const isoDate = d => d.toISOString().slice(0,10);
-const today = () => isoDate(new Date());
-const daysAgo = n => isoDate(new Date(Date.now() - n*864e5));
+const today   = () => isoDate(new Date());
+const daysAgo = n => isoDate(new Date(Date.now()-n*864e5));
+
+// Russian date format: "16 мая 2026"
+function ruDate(isoStr){
+  if(!isoStr) return '—';
+  const d = new Date(isoStr+'T12:00:00');
+  return d.toLocaleDateString('ru',{day:'numeric',month:'long',year:'numeric'});
+}
+// Short: "16 мая"
+function ruDateShort(isoStr){
+  if(!isoStr) return '—';
+  const d = new Date(isoStr+'T12:00:00');
+  return d.toLocaleDateString('ru',{day:'numeric',month:'long'});
+}
 
 function setPeriod(n){
   document.getElementById('date-from').value = daysAgo(n-1);
-  document.getElementById('date-to').value = today();
+  document.getElementById('date-to').value   = today();
   document.querySelectorAll('.preset').forEach(b=>b.classList.remove('on'));
+  event.target.classList.add('on');
   updateRangeInfo();
 }
 function setMonth(){
   const now=new Date();
-  document.getElementById('date-from').value = now.getFullYear()+'-'+ String(now.getMonth()+1).padStart(2,'0')+'-01';
-  document.getElementById('date-to').value = today();
+  document.getElementById('date-from').value=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-01';
+  document.getElementById('date-to').value=today();
   document.querySelectorAll('.preset').forEach(b=>b.classList.remove('on'));
   updateRangeInfo();
 }
@@ -241,242 +243,217 @@ function updateRangeInfo(){
   const t=document.getElementById('date-to').value;
   if(f&&t){
     const days=Math.round((new Date(t)-new Date(f))/864e5)+1;
-    document.getElementById('range-info').textContent = days+' дн выбрано';
+    document.getElementById('range-info').textContent=days+' дн выбрано';
   }
+}
+
+/* ═══ Tabs ═══ */
+function goTab(n){
+  CUR_TAB=n;
+  document.getElementById('tab1').classList.toggle('on',n===1);
+  document.getElementById('tab2').classList.toggle('on',n===2);
+  document.getElementById('app1').style.display=n===1?'block':'none';
+  document.getElementById('app2').style.display=n===2?'block':'none';
 }
 
 /* ═══ Setup ═══ */
 function doSave(){
-  const k = document.getElementById('sk').value.trim();
-  const px = document.getElementById('sprx').value.trim();
-  if(!k){document.getElementById('smsg').textContent='Введите API-ключ';return;}
-  CFG.key = k; CFG.proxy = px||CFG.proxy;
-  try{localStorage.setItem('wbf_cfg',JSON.stringify(CFG));}catch(e){}
+  CFG.key1  = document.getElementById('sk1').value.trim();
+  CFG.key2  = document.getElementById('sk2').value.trim();
+  CFG.proxy1= document.getElementById('sprx').value.trim()||CFG.proxy1;
+  CFG.proxy2= document.getElementById('sprx2').value.trim();
+  if(!CFG.key1&&!CFG.key2){document.getElementById('smsg').textContent='Введите хотя бы один ключ';return;}
+  try{localStorage.setItem('wbf_cfg2',JSON.stringify(CFG));}catch(e){}
   document.getElementById('setup').classList.remove('show');
-  document.getElementById('load-btn').disabled = false;
-  document.getElementById('smsg').textContent = '';
+  document.getElementById('smsg').textContent='';
+  // Reset data so stale results don't show
+  DATA={1:null,2:null};
+  document.getElementById('app1').innerHTML='<div class="lm">Нажмите ↻ Загрузить</div>';
+  document.getElementById('app2').innerHTML='<div class="lm">Нажмите ↻ Загрузить</div>';
 }
 function openSetup(){
-  document.getElementById('sk').value = CFG.key;
-  document.getElementById('sprx').value = CFG.proxy;
+  document.getElementById('sk1').value=CFG.key1;
+  document.getElementById('sk2').value=CFG.key2;
+  document.getElementById('sprx').value=CFG.proxy1;
+  document.getElementById('sprx2').value=CFG.proxy2;
   document.getElementById('setup').classList.add('show');
 }
 
-/* ═══ API fetch with retry ═══ */
-let _lastReq = 0;
-async function wbGet(path){
-  const url = CFG.proxy + '?url=' + encodeURIComponent('https://statistics-api.wildberries.ru'+path);
-  const waits = [3000, 8000, 20000];
-  for(let i=0; i<=waits.length; i++){
-    const gap = Math.max(0, _lastReq + 1300 - Date.now());
-    if(gap>0) await sleep(gap);
-    let r, txt='';
-    try{
-      r = await fetch(url, {headers:{'X-WB-Token': CFG.key}});
-      txt = await r.text();
-    }catch(e){
-      if(i===waits.length) throw new Error('Сеть/прокси: '+e.message);
-      await sleep(waits[i]); continue;
+/* ═══ API ═══ */
+const _last={1:0,2:0};
+async function wbGet(path,cab){
+  const key  = cab===1?CFG.key1:CFG.key2;
+  const proxy= (cab===2&&CFG.proxy2)?CFG.proxy2:CFG.proxy1;
+  const url  = proxy+'?url='+encodeURIComponent('https://statistics-api.wildberries.ru'+path);
+  const waits=[3000,8000,20000];
+  for(let i=0;i<=waits.length;i++){
+    const gap=Math.max(0,_last[cab]+1300-Date.now());
+    if(gap>0)await sleep(gap);
+    let r,txt='';
+    try{r=await fetch(url,{headers:{'X-WB-Token':key}});txt=await r.text();}
+    catch(e){if(i===waits.length)throw new Error('Сеть/прокси: '+e.message);await sleep(waits[i]);continue;}
+    _last[cab]=Date.now();
+    if(r.status===429||r.status>=500||!txt.trim()){
+      if(i===waits.length)throw new Error('WB '+r.status+': не удалось получить данные после '+(waits.length+1)+' попыток');
+      const ra=parseInt(r.headers.get('retry-after')||'0',10);
+      await sleep(ra>0?ra*1000:waits[i]);continue;
     }
-    _lastReq = Date.now();
-    if(r.status===429 || r.status>=500 || !txt.trim()){
-      if(i===waits.length) throw new Error('WB '+r.status+': не удалось получить данные после '+(waits.length+1)+' попыток');
-      const ra = parseInt(r.headers.get('retry-after')||'0',10);
-      await sleep(ra>0?ra*1000:waits[i]); continue;
-    }
-    if(!r.ok) throw new Error('WB '+r.status+': '+txt.slice(0,200));
+    if(!r.ok)throw new Error('WB '+r.status+': '+txt.slice(0,200));
     try{return JSON.parse(txt);}
     catch(e){throw new Error('Некорректный JSON: '+txt.slice(0,120));}
   }
 }
-const sleep = ms => new Promise(r=>setTimeout(r,ms));
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
-/* ═══ Load data ═══ */
+/* ═══ Load ═══ */
 async function loadData(){
-  const f = document.getElementById('date-from').value;
-  const t = document.getElementById('date-to').value;
+  const f=document.getElementById('date-from').value;
+  const t=document.getElementById('date-to').value;
   if(!f||!t){alert('Выберите период');return;}
-  if(!CFG.key){openSetup();return;}
 
-  const btn = document.getElementById('load-btn');
-  const ic = document.getElementById('load-ic');
-  btn.disabled = true;
-  ic.innerHTML = '<span class="sp">↻</span>';
-  document.getElementById('app').innerHTML = '<div class="lm"><span class="sp">↻</span> Загружаем заказы и выкупы...</div>';
+  const btn=document.getElementById('load-btn');
+  const ic =document.getElementById('load-ic');
+  btn.disabled=true;
+  ic.innerHTML='<span class="sp">↻</span>';
 
+  // Load both cabinets that have keys
+  const tasks=[];
+  if(CFG.key1) tasks.push(loadCab(1,f,t));
+  if(CFG.key2) tasks.push(loadCab(2,f,t));
+  if(!tasks.length){openSetup();btn.disabled=false;ic.textContent='↻';return;}
+
+  await Promise.allSettled(tasks);
+
+  btn.disabled=false;
+  ic.textContent='↻';
+  document.getElementById('upd-lbl').textContent='обновлено '+new Date().toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'});
+}
+
+async function loadCab(cab,f,t){
+  const appId='app'+cab;
+  document.getElementById(appId).innerHTML='<div class="lm"><span class="sp">↻</span> Загружаем кабинет '+(cab===1?'Easyform':'EZFR')+'...</div>';
   try{
-    // Загружаем заказы за выбранный период
-    const ordFrom = f + 'T00:00:00Z';
-    // Для выкупов берём +60 дней после конца периода (выкуп может быть позже)
-    const saleFrom = f + 'T00:00:00Z';
-
-    const [ordRaw, saleRaw] = await Promise.all([
-      wbGet('/api/v1/supplier/orders?dateFrom='+encodeURIComponent(ordFrom)+'&flag=0'),
-      wbGet('/api/v1/supplier/sales?dateFrom='+encodeURIComponent(saleFrom)+'&flag=0')
+    const ordFrom=f+'T00:00:00Z';
+    const saleFrom=f+'T00:00:00Z';
+    const [ordRaw,saleRaw]=await Promise.all([
+      wbGet('/api/v1/supplier/orders?dateFrom='+encodeURIComponent(ordFrom)+'&flag=0',cab),
+      wbGet('/api/v1/supplier/sales?dateFrom='+encodeURIComponent(saleFrom)+'&flag=0',cab)
     ]);
-
-    const orders = Array.isArray(ordRaw) ? ordRaw : [];
-    const sales  = Array.isArray(saleRaw) ? saleRaw : [];
-
-    // Фильтруем заказы по выбранному диапазону
-    const filtered = orders.filter(o=>{
-      const d = (o.date||'').slice(0,10);
-      return d >= f && d <= t;
-    });
-
-    DATA = {orders: filtered, sales, dateFrom: f, dateTo: t};
-    render();
-    document.getElementById('upd-lbl').textContent = 'обновлено ' + new Date().toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'});
+    const orders=Array.isArray(ordRaw)?ordRaw:[];
+    const sales =Array.isArray(saleRaw)?saleRaw:[];
+    const filtered=orders.filter(o=>{const d=(o.date||'').slice(0,10);return d>=f&&d<=t;});
+    DATA[cab]={orders:filtered,sales,dateFrom:f,dateTo:t};
+    renderCab(cab);
   }catch(e){
-    document.getElementById('app').innerHTML =
-      `<div class="err-box">⚠️ ${e.message}</div>`;
-  }finally{
-    btn.disabled = false;
-    ic.textContent = '↻';
+    document.getElementById(appId).innerHTML=`<div class="err-box">⚠️ Кабинет ${cab===1?'Easyform':'EZFR'}: ${e.message}</div>`;
   }
 }
 
-/* ═══ Matching logic ═══
-   WB: заказ имеет поле odid (число) — уникальный ID.
-   Продажа также имеет odid. Связываем по odid.
-   Если odid отсутствует — матчим по supplierArticle+techSize+дата (fallback).
-*/
-function buildFunnel(orders, sales){
-  // Индекс продаж по odid
-  const saleByOdid = {};
-  const saleByKey  = {}; // fallback
+/* ═══ Funnel matching ═══ */
+function buildFunnel(orders,sales){
+  const saleByOdid={};
+  const returnByOdid={};
   for(const s of sales){
-    if(s.saleID && !s.saleID.startsWith('R')) continue; // только реальные продажи (не возвраты)
-    const oid = s.odid;
-    if(oid) saleByOdid[oid] = s;
-    // fallback key: артикул+размер+дата продажи (может быть дубликат, но лучше чем ничего)
-    const fk = (s.supplierArticle||'')+'|'+(s.techSize||'')+'|'+(s.date||'').slice(0,10);
-    if(!saleByKey[fk]) saleByKey[fk] = [];
-    saleByKey[fk].push(s);
+    if(!s.odid) continue;
+    if(s.saleID&&s.saleID.startsWith('R')) returnByOdid[s.odid]=s;
+    else saleByOdid[s.odid]=s;
   }
-
-  // Индекс возвратов (saleID начинается с R)
-  const returnByOdid = {};
-  for(const s of sales){
-    if(s.saleID && s.saleID.startsWith('R') && s.odid) returnByOdid[s.odid] = s;
-  }
-
   return orders.map(o=>{
-    const odid = o.odid;
-    let sale = null, isReturn = false;
-
-    if(odid && saleByOdid[odid]){
-      sale = saleByOdid[odid];
-    } else if(!odid){
-      // Fallback: ищем ближайшую продажу того же артикула+размера после даты заказа
-      const art = o.supplierArticle||'';
-      const sz  = o.techSize||'';
-      const oDate = new Date(o.date||0);
-      let best = null, bestDiff = Infinity;
+    const odid=o.odid;
+    let sale=null,isReturn=false;
+    if(odid&&saleByOdid[odid]) sale=saleByOdid[odid];
+    else if(!odid){
+      const art=o.supplierArticle||'',sz=o.techSize||'';
+      const oDate=new Date(o.date||0);
+      let best=null,bestDiff=Infinity;
       for(const s of sales){
-        if(s.saleID && s.saleID.startsWith('R')) continue;
-        if((s.supplierArticle||'')===art && (s.techSize||'')===sz){
-          const sd = new Date(s.date||0);
-          const diff = sd - oDate;
-          if(diff >= 0 && diff < bestDiff){bestDiff=diff;best=s;}
+        if(s.saleID&&s.saleID.startsWith('R')) continue;
+        if((s.supplierArticle||'')===art&&(s.techSize||'')===sz){
+          const sd=new Date(s.date||0),diff=sd-oDate;
+          if(diff>=0&&diff<bestDiff){bestDiff=diff;best=s;}
         }
       }
-      if(best && bestDiff < 30*864e5) sale = best;
+      if(best&&bestDiff<30*864e5) sale=best;
     }
+    if(odid&&returnByOdid[odid]) isReturn=true;
 
-    // Проверяем возврат
-    if(odid && returnByOdid[odid]){ isReturn = true; }
-
-    // Статус
     let status;
-    if(o.isCancel) status = 'cancel';
-    else if(sale && isReturn) status = 'returned';
-    else if(sale) status = 'sold';
-    else {
-      // Заказ без продажи — ждём или отменён
-      const orderDate = new Date(o.date||0);
-      const daysSince = (Date.now() - orderDate) / 864e5;
-      status = daysSince > 21 ? 'cancel' : 'waiting';
+    if(o.isCancel) status='cancel';
+    else if(sale&&isReturn) status='returned';
+    else if(sale) status='sold';
+    else{
+      const daysSince=(Date.now()-new Date(o.date||0))/864e5;
+      status=daysSince>21?'cancel':'waiting';
     }
-
-    const orderDate = (o.date||'').slice(0,10);
-    const saleDate  = sale ? (sale.date||'').slice(0,10) : null;
-    const daysToSale = sale && saleDate && orderDate
-      ? Math.round((new Date(saleDate) - new Date(orderDate)) / 864e5)
-      : null;
-
-    return {
-      order_date : orderDate,
-      order_time : o.date ? new Date(o.date).toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'}) : '—',
-      art        : o.supplierArticle || '—',
-      size       : o.techSize || '—',
-      name       : o.subject || o.category || '—',
-      price      : o.finishedPrice || o.priceWithDisc || o.totalPrice || 0,
-      wh         : o.warehouseName || '—',
-      odid       : odid || null,
-      status,
-      sale_date  : saleDate,
-      sale_price : sale ? (sale.finishedPrice||sale.priceWithDisc||sale.totalPrice||0) : null,
-      days_to_sale: daysToSale,
-      region     : o.regionName || o.oblast || '—',
+    const orderDate=(o.date||'').slice(0,10);
+    const saleDate =sale?(sale.date||'').slice(0,10):null;
+    const daysToSale=sale&&saleDate&&orderDate?Math.round((new Date(saleDate)-new Date(orderDate))/864e5):null;
+    return{
+      order_date:orderDate,
+      order_time:o.date?new Date(o.date).toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'}):'—',
+      art:o.supplierArticle||'—',size:o.techSize||'—',
+      name:o.subject||o.category||'—',
+      price:o.finishedPrice||o.priceWithDisc||o.totalPrice||0,
+      wh:o.warehouseName||'—',odid:odid||null,
+      status,sale_date:saleDate,
+      sale_price:sale?(sale.finishedPrice||sale.priceWithDisc||sale.totalPrice||0):null,
+      days_to_sale:daysToSale,region:o.regionName||o.oblast||'—'
     };
   });
 }
 
-/* ═══ Aggregation by day ═══ */
 function aggByDay(rows){
-  const m = {};
+  const m={};
   for(const r of rows){
-    const d = r.order_date;
-    if(!m[d]) m[d]={date:d,total:0,sold:0,waiting:0,cancel:0,returned:0,revenue:0,daysSum:0,daysCnt:0};
-    m[d].total++;
-    m[d][r.status]++;
+    const d=r.order_date;
+    if(!m[d])m[d]={date:d,total:0,sold:0,waiting:0,cancel:0,returned:0,revenue:0,daysSum:0,daysCnt:0};
+    m[d].total++;m[d][r.status]++;
     if(r.status==='sold'||r.status==='returned'){
-      m[d].revenue += r.sale_price||0;
+      m[d].revenue+=r.sale_price||0;
       if(r.days_to_sale!=null){m[d].daysSum+=r.days_to_sale;m[d].daysCnt++;}
     }
   }
   return Object.values(m).map(d=>({
     ...d,
-    conv: d.total>0 ? Math.round((d.sold+d.returned)/d.total*100) : 0,
-    avg_days: d.daysCnt>0 ? (d.daysSum/d.daysCnt).toFixed(1) : null
+    conv:d.total>0?Math.round((d.sold+d.returned)/d.total*100):0,
+    avg_days:d.daysCnt>0?(d.daysSum/d.daysCnt).toFixed(1):null
   }));
 }
 
 /* ═══ Render ═══ */
-function render(){
-  if(!DATA) return;
-  const rows = buildFunnel(DATA.orders, DATA.sales);
-  const days  = aggByDay(rows);
+function renderCab(cab){
+  if(!DATA[cab])return;
+  const rows=buildFunnel(DATA[cab].orders,DATA[cab].sales);
+  const days=aggByDay(rows);
 
-  // Global metrics
-  const total    = rows.length;
-  const sold     = rows.filter(r=>r.status==='sold').length;
-  const waiting  = rows.filter(r=>r.status==='waiting').length;
-  const cancel   = rows.filter(r=>r.status==='cancel').length;
-  const returned = rows.filter(r=>r.status==='returned').length;
-  const conv     = total>0?Math.round((sold+returned)/total*100):0;
-  const revenue  = rows.filter(r=>r.status==='sold'||r.status==='returned').reduce((s,r)=>s+(r.sale_price||0),0);
-  const dArr     = rows.filter(r=>r.days_to_sale!=null).map(r=>r.days_to_sale);
-  const avgDays  = dArr.length>0?(dArr.reduce((a,b)=>a+b,0)/dArr.length).toFixed(1):null;
+  const total   =rows.length;
+  const sold    =rows.filter(r=>r.status==='sold').length;
+  const waiting =rows.filter(r=>r.status==='waiting').length;
+  const cancel  =rows.filter(r=>r.status==='cancel').length;
+  const returned=rows.filter(r=>r.status==='returned').length;
+  const conv    =total>0?Math.round((sold+returned)/total*100):0;
+  const revenue =rows.filter(r=>r.status==='sold'||r.status==='returned').reduce((s,r)=>s+(r.sale_price||0),0);
+  const dArr    =rows.filter(r=>r.days_to_sale!=null).map(r=>r.days_to_sale);
+  const avgDays =dArr.length>0?(dArr.reduce((a,b)=>a+b,0)/dArr.length).toFixed(1):null;
+  const convCls =conv>=60?'g':conv>=40?'a':'r';
 
-  const convCls = conv>=60?'g':conv>=40?'a':'r';
+  const f=DATA[cab].dateFrom, t=DATA[cab].dateTo;
 
-  let html = '';
+  let html='';
 
-  // ── Metric cards ──
-  html += `<div class="mc-row">
-    <div class="mc"><div class="mc-label">Всего заказов</div><div class="mc-val">${total}</div><div class="mc-sub">${DATA.dateFrom} — ${DATA.dateTo}</div></div>
-    <div class="mc"><div class="mc-label">Выкуплено</div><div class="mc-val g">${sold}</div><div class="mc-sub">${conv}% конверсия</div></div>
+  // Metrics
+  html+=`<div class="mc-row">
+    <div class="mc"><div class="mc-label">Всего заказов</div><div class="mc-val">${total}</div><div class="mc-sub">${ruDateShort(f)} — ${ruDateShort(t)}</div></div>
+    <div class="mc"><div class="mc-label">Выкуплено</div><div class="mc-val g">${sold}</div><div class="mc-sub">Процент выкупа: ${conv}%</div></div>
     <div class="mc"><div class="mc-label">В ожидании</div><div class="mc-val a">${waiting}</div><div class="mc-sub">заказ в пути / на ПВЗ</div></div>
-    <div class="mc"><div class="mc-label">Отменено / не выкуплено</div><div class="mc-val r">${cancel}</div><div class="mc-sub">включая возвраты: ${returned}</div></div>
+    <div class="mc"><div class="mc-label">Отменено / не выкуплено</div><div class="mc-val r">${cancel}</div><div class="mc-sub">возвраты: ${returned}</div></div>
     <div class="mc"><div class="mc-label">Сумма выкупов</div><div class="mc-val b" style="font-size:17px">${fmtRub(revenue)}</div><div class="mc-sub">ср. время выкупа: ${avgDays!=null?avgDays+' дн':'—'}</div></div>
   </div>`;
 
-  // ── Funnel ──
-  const waitPct  = total>0?Math.round(waiting/total*100):0;
-  const cancelPct= total>0?Math.round(cancel/total*100):0;
-  html += `<div class="conv-bar">
+  // Funnel
+  const waitPct  =total>0?Math.round(waiting/total*100):0;
+  const cancelPct=total>0?Math.round(cancel/total*100):0;
+  html+=`<div class="conv-bar">
     <div class="conv-title">Воронка: Заказ → Выкуп</div>
     <div class="funnel-steps">
       <div class="f-step"><div class="f-num">${total}</div><div class="f-lbl">Заказов</div><div class="f-conv">100%</div></div>
@@ -491,32 +468,28 @@ function render(){
     </div>
   </div>`;
 
-  // ── Day summary ──
-  html += buildDayTable(days, total);
+  html+=buildDayTable(days,cab);
+  html+=buildDetailTable(rows,cab);
 
-  // ── Detail table ──
-  html += buildDetailTable(rows);
-
-  document.getElementById('app').innerHTML = html;
+  document.getElementById('app'+cab).innerHTML=html;
 }
 
 /* ═══ Day table ═══ */
-function buildDayTable(days, grandTotal){
-  const {col,dir} = SORT;
-  const sorted = [...days].sort((a,b)=>{
-    let va=a[col],vb=b[col];
-    if(col==='date'){va=va||'';vb=vb||'';}
-    return (va<vb?-1:va>vb?1:0)*dir;
+function buildDayTable(days,cab){
+  const {col,dir}=SORT[cab];
+  const sorted=[...days].sort((a,b)=>{
+    let va=a[col]??'',vb=b[col]??'';
+    return(va<vb?-1:va>vb?1:0)*dir;
   });
-  const ar=k=>SORT.col===k?(SORT.dir>0?' ↑':' ↓'):' ↕';
-  const sc=k=>SORT.col===k?' sa':'';
+  const ar=k=>SORT[cab].col===k?(SORT[cab].dir>0?' ↑':' ↓'):' ↕';
+  const sc=k=>SORT[cab].col===k?' sa':'';
 
-  const rows = sorted.map(d=>{
+  const rows=sorted.map(d=>{
     const cc=d.conv>=60?'cp-g':d.conv>=40?'cp-a':'cp-r';
     const pw=d.total>0?Math.round((d.sold+d.returned)/d.total*100):0;
     const barCls=d.conv>=60?'pb-g':d.conv>=40?'pb-a':'pb-r';
-    return `<tr>
-      <td><span class="tp">${d.date}</span></td>
+    return`<tr>
+      <td><span class="tp">${ruDate(d.date)}</span></td>
       <td style="font-weight:700">${d.total}</td>
       <td style="color:var(--green);font-weight:700">${d.sold}</td>
       <td style="color:var(--amber)">${d.waiting}</td>
@@ -528,98 +501,91 @@ function buildDayTable(days, grandTotal){
     </tr>`;
   }).join('');
 
-  return `<div class="sec">
+  return`<div class="sec">
     <div class="sh"><span class="st">Сводка по дням</span><span class="sm2">${days.length} дней</span></div>
     <div class="sw"><table>
       <thead><tr>
-        <th onclick="srtDay('date')" class="${sc('date')}">Дата${ar('date')}</th>
-        <th onclick="srtDay('total')" class="${sc('total')}">Заказов${ar('total')}</th>
-        <th onclick="srtDay('sold')" class="${sc('sold')}">Выкупил${ar('sold')}</th>
-        <th onclick="srtDay('waiting')" class="${sc('waiting')}">Ждут${ar('waiting')}</th>
-        <th onclick="srtDay('cancel')" class="${sc('cancel')}">Отменено${ar('cancel')}</th>
-        <th onclick="srtDay('returned')" class="${sc('returned')}">Возврат${ar('returned')}</th>
-        <th onclick="srtDay('conv')" class="${sc('conv')}">Конверсия${ar('conv')}</th>
-        <th onclick="srtDay('revenue')" class="${sc('revenue')}">Выручка${ar('revenue')}</th>
-        <th onclick="srtDay('avg_days')" class="${sc('avg_days')}">Ср. дней до выкупа${ar('avg_days')}</th>
+        <th onclick="srtDay(${cab},'date')" class="${sc('date')}">Дата${ar('date')}</th>
+        <th onclick="srtDay(${cab},'total')" class="${sc('total')}">Заказов${ar('total')}</th>
+        <th onclick="srtDay(${cab},'sold')" class="${sc('sold')}">Выкуплено${ar('sold')}</th>
+        <th onclick="srtDay(${cab},'waiting')" class="${sc('waiting')}">Ждут${ar('waiting')}</th>
+        <th onclick="srtDay(${cab},'cancel')" class="${sc('cancel')}">Отменено${ar('cancel')}</th>
+        <th onclick="srtDay(${cab},'returned')" class="${sc('returned')}">Возврат${ar('returned')}</th>
+        <th onclick="srtDay(${cab},'conv')" class="${sc('conv')}">Процент выкупа${ar('conv')}</th>
+        <th onclick="srtDay(${cab},'revenue')" class="${sc('revenue')}">Выручка${ar('revenue')}</th>
+        <th onclick="srtDay(${cab},'avg_days')" class="${sc('avg_days')}">Ср. дней до выкупа${ar('avg_days')}</th>
       </tr></thead>
       <tbody>${rows||'<tr><td colspan="9" class="em">Нет данных</td></tr>'}</tbody>
     </table></div>
   </div>`;
 }
-function srtDay(col){
-  SORT.dir = SORT.col===col ? SORT.dir*-1 : -1;
-  SORT.col = col;
-  if(!DATA) return;
-  const rows = buildFunnel(DATA.orders, DATA.sales);
-  const days = aggByDay(rows);
-  document.querySelector('.sw') && render(); // full re-render for simplicity
+function srtDay(cab,col){
+  SORT[cab].dir=SORT[cab].col===col?SORT[cab].dir*-1:-1;
+  SORT[cab].col=col;
+  if(DATA[cab])renderCab(cab);
 }
 
 /* ═══ Detail table ═══ */
-function buildDetailTable(allRows){
-  const {col,dir} = SORT2;
-
-  // Apply filters
-  let rows = allRows;
-  if(FILT.art.trim()){
-    const q = FILT.art.trim().toLowerCase();
-    rows = rows.filter(r=>r.art.toLowerCase().includes(q)||r.name.toLowerCase().includes(q));
+function buildDetailTable(allRows,cab){
+  const {col,dir}=SORT2[cab];
+  let rows=allRows;
+  const filt=FILT[cab];
+  if(filt.art.trim()){
+    const q=filt.art.trim().toLowerCase();
+    rows=rows.filter(r=>r.art.toLowerCase().includes(q)||r.name.toLowerCase().includes(q));
   }
-  if(FILT.status!=='all') rows = rows.filter(r=>r.status===FILT.status);
+  if(filt.status!=='all') rows=rows.filter(r=>r.status===filt.status);
 
-  const sorted = [...rows].sort((a,b)=>{
+  const sorted=[...rows].sort((a,b)=>{
     let va=a[col]??'',vb=b[col]??'';
-    if(col==='price'||col==='sale_price'||col==='days_to_sale'){va=va||0;vb=vb||0;}
-    return (va<vb?-1:va>vb?1:0)*dir;
+    if(['price','sale_price','days_to_sale'].includes(col)){va=va||0;vb=vb||0;}
+    return(va<vb?-1:va>vb?1:0)*dir;
   });
 
-  const LIMIT = 50;
-  const show = EXPAND ? sorted : sorted.slice(0,LIMIT);
+  const LIMIT=50;
+  const show=EXPAND[cab]?sorted:sorted.slice(0,LIMIT);
+  const ar=k=>SORT2[cab].col===k?(SORT2[cab].dir>0?' ↑':' ↓'):' ↕';
+  const sc=k=>SORT2[cab].col===k?' sa':'';
 
-  const ar=k=>SORT2.col===k?(SORT2.dir>0?' ↑':' ↓'):' ↕';
-  const sc=k=>SORT2.col===k?' sa':'';
+  const statusBadge=s=>({
+    sold    :'<span class="badge b-sold">✓ Выкуплен</span>',
+    waiting :'<span class="badge b-wait">⏳ Ждём</span>',
+    cancel  :'<span class="badge b-cancel">✗ Отменён</span>',
+    returned:'<span class="badge b-cancel">↩ Возврат</span>',
+  })[s]||s;
 
-  const statusBadge = s => ({
-    sold:     '<span class="badge b-sold">✓ Выкуплен</span>',
-    waiting:  '<span class="badge b-wait">⏳ Ждём</span>',
-    cancel:   '<span class="badge b-cancel">✗ Отменён</span>',
-    returned: '<span class="badge b-cancel">↩ Возврат</span>',
-    new:      '<span class="badge b-new">🆕 Новый</span>',
-  })[s] || s;
-
-  const tableRows = show.map(r=>{
-    const dc = r.days_to_sale!=null
-      ? (r.days_to_sale<=3?'<span class="days-chip" style="color:var(--green)">'+r.days_to_sale+' дн</span>'
+  const tableRows=show.map(r=>{
+    const dc=r.days_to_sale!=null
+      ?(r.days_to_sale<=3?'<span class="days-chip" style="color:var(--green)">'+r.days_to_sale+' дн</span>'
         :r.days_to_sale<=7?'<span class="days-chip" style="color:var(--amber)">'+r.days_to_sale+' дн</span>'
         :'<span class="days-chip" style="color:var(--red)">'+r.days_to_sale+' дн</span>')
-      : '—';
-    return `<tr>
-      <td><span class="tp">${r.order_date}</span> <span style="color:var(--ink3);font-size:10px">${r.order_time}</span></td>
+      :'—';
+    return`<tr>
+      <td><span class="tp" style="white-space:nowrap">${ruDate(r.order_date)}</span> <span style="color:var(--ink3);font-size:10px">${r.order_time}</span></td>
       <td><span class="art">${r.art}</span></td>
       <td>${r.size}</td>
       <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.name}">${r.name}</td>
       <td style="font-weight:700">${r.price>0?fmtRub(r.price):'—'}</td>
       <td>${statusBadge(r.status)}</td>
-      <td>${r.sale_date||'—'}</td>
+      <td style="white-space:nowrap">${r.sale_date?ruDate(r.sale_date):'—'}</td>
       <td style="font-weight:${r.sale_price?700:400};color:${r.sale_price?'var(--blue)':'var(--ink3)'}">${r.sale_price!=null?fmtRub(r.sale_price):'—'}</td>
       <td>${dc}</td>
       <td style="font-size:11px;color:var(--ink3)">${r.wh}</td>
     </tr>`;
   }).join('');
 
-  const expBtn = sorted.length>LIMIT
-    ? `<tr class="er"><td colspan="10"><button class="eb" onclick="toggleExpand()">${EXPAND?'▲ Свернуть':'▼ Показать все '+sorted.length+' строк'}</button></td></tr>`
-    : '';
+  const expBtn=sorted.length>LIMIT
+    ?`<tr class="er"><td colspan="10"><button class="eb" onclick="toggleExpand(${cab})">${EXPAND[cab]?'▲ Свернуть':'▼ Показать все '+sorted.length+' строк'}</button></td></tr>`:'';
 
-  const statusOptions = ['all','sold','waiting','cancel','returned']
-    .map(s=>`<option value="${s}" ${FILT.status===s?'selected':''}>${{all:'Все статусы',sold:'Выкуплено',waiting:'Ждём',cancel:'Отменено',returned:'Возврат'}[s]}</option>`)
+  const statusOptions=['all','sold','waiting','cancel','returned']
+    .map(s=>`<option value="${s}" ${filt.status===s?'selected':''}>${{all:'Все статусы',sold:'Выкуплено',waiting:'Ждём',cancel:'Отменено',returned:'Возврат'}[s]}</option>`)
     .join('');
 
-  return `<div class="sec">
+  return`<div class="sec">
     <div class="sh"><span class="st">Детали по каждому заказу</span><span class="sm2">${rows.length} из ${allRows.length}</span></div>
     <div class="fbar">
-      <input placeholder="🔎 Артикул или товар" value="${FILT.art}" oninput="setFilt('art',this.value)" style="width:200px">
-      <select onchange="setFilt('status',this.value)">${statusOptions}</select>
+      <input placeholder="🔎 Артикул или товар" value="${filt.art}" oninput="setFilt(${cab},'art',this.value)" style="width:200px">
+      <select onchange="setFilt(${cab},'status',this.value)">${statusOptions}</select>
       <span style="font-size:11px;color:var(--ink3);margin-left:4px">
         <span style="color:var(--green)">■</span> выкуплен &nbsp;
         <span style="color:var(--amber)">■</span> ждём &nbsp;
@@ -628,15 +594,14 @@ function buildDetailTable(allRows){
     </div>
     <div class="sw"><table>
       <thead><tr>
-        <th onclick="srtDetail('order_date')" class="${sc('order_date')}">Дата заказа${ar('order_date')}</th>
-        <th onclick="srtDetail('art')" class="${sc('art')}">Артикул${ar('art')}</th>
-        <th>Размер</th>
-        <th>Товар</th>
-        <th onclick="srtDetail('price')" class="${sc('price')}">Цена заказа${ar('price')}</th>
-        <th onclick="srtDetail('status')" class="${sc('status')}">Статус${ar('status')}</th>
-        <th onclick="srtDetail('sale_date')" class="${sc('sale_date')}">Дата выкупа${ar('sale_date')}</th>
-        <th onclick="srtDetail('sale_price')" class="${sc('sale_price')}">Сумма выкупа${ar('sale_price')}</th>
-        <th onclick="srtDetail('days_to_sale')" class="${sc('days_to_sale')}">Дней до выкупа${ar('days_to_sale')}</th>
+        <th onclick="srtDetail(${cab},'order_date')" class="${sc('order_date')}">Дата заказа${ar('order_date')}</th>
+        <th onclick="srtDetail(${cab},'art')" class="${sc('art')}">Артикул${ar('art')}</th>
+        <th>Размер</th><th>Товар</th>
+        <th onclick="srtDetail(${cab},'price')" class="${sc('price')}">Цена заказа${ar('price')}</th>
+        <th onclick="srtDetail(${cab},'status')" class="${sc('status')}">Статус${ar('status')}</th>
+        <th onclick="srtDetail(${cab},'sale_date')" class="${sc('sale_date')}">Дата выкупа${ar('sale_date')}</th>
+        <th onclick="srtDetail(${cab},'sale_price')" class="${sc('sale_price')}">Сумма выкупа${ar('sale_price')}</th>
+        <th onclick="srtDetail(${cab},'days_to_sale')" class="${sc('days_to_sale')}">Дней до выкупа${ar('days_to_sale')}</th>
         <th>Склад</th>
       </tr></thead>
       <tbody>${tableRows||'<tr><td colspan="10" class="em">Нет заказов по фильтру</td></tr>'}${expBtn}</tbody>
@@ -644,37 +609,29 @@ function buildDetailTable(allRows){
   </div>`;
 }
 
-function srtDetail(col){
-  SORT2.dir = SORT2.col===col ? SORT2.dir*-1 : -1;
-  SORT2.col = col;
-  if(DATA) render();
-}
-function setFilt(k,v){FILT[k]=v;EXPAND=false;if(DATA)render();}
-function toggleExpand(){EXPAND=!EXPAND;if(DATA)render();}
+function srtDetail(cab,col){SORT2[cab].dir=SORT2[cab].col===col?SORT2[cab].dir*-1:-1;SORT2[cab].col=col;if(DATA[cab])renderCab(cab);}
+function setFilt(cab,k,v){FILT[cab][k]=v;EXPAND[cab]=false;if(DATA[cab])renderCab(cab);}
+function toggleExpand(cab){EXPAND[cab]=!EXPAND[cab];if(DATA[cab])renderCab(cab);}
 
-/* ═══ Formatters ═══ */
-const fmtRub = v => Math.round(v).toLocaleString('ru') + ' ₽';
+const fmtRub=v=>Math.round(v).toLocaleString('ru')+' ₽';
 
 /* ═══ Init ═══ */
-window.onload = ()=>{
-  // Defaults: last 30 days
-  document.getElementById('date-from').value = daysAgo(29);
-  document.getElementById('date-to').value   = today();
+window.onload=()=>{
+  document.getElementById('date-from').value=daysAgo(29);
+  document.getElementById('date-to').value=today();
   updateRangeInfo();
-
-  document.getElementById('date-from').addEventListener('change', updateRangeInfo);
-  document.getElementById('date-to').addEventListener('change', updateRangeInfo);
-
-  // Load saved config
+  document.getElementById('date-from').addEventListener('change',updateRangeInfo);
+  document.getElementById('date-to').addEventListener('change',updateRangeInfo);
   try{
-    const s = JSON.parse(localStorage.getItem('wbf_cfg')||'{}');
-    if(s.key){ CFG.key=s.key; }
-    if(s.proxy){ CFG.proxy=s.proxy; }
-    if(s.key){
+    const s=JSON.parse(localStorage.getItem('wbf_cfg2')||'{}');
+    if(s.key1)CFG.key1=s.key1;
+    if(s.key2)CFG.key2=s.key2;
+    if(s.proxy1)CFG.proxy1=s.proxy1;
+    if(s.proxy2)CFG.proxy2=s.proxy2;
+    if(CFG.key1||CFG.key2){
       document.getElementById('setup').classList.remove('show');
-      document.getElementById('load-btn').disabled = false;
-      document.getElementById('app').innerHTML =
-        '<div class="lm">Ключ загружен. Нажмите <b>↻ Загрузить</b> чтобы получить данные.</div>';
+      if(!CFG.key1)document.getElementById('app1').innerHTML='<div class="lm">Ключ EF не задан. <a href="#" onclick="openSetup()">Настройки</a></div>';
+      if(!CFG.key2)document.getElementById('app2').innerHTML='<div class="lm">Ключ EZFR не задан. <a href="#" onclick="openSetup()">Настройки</a></div>';
     }
   }catch(e){}
 };
