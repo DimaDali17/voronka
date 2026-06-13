@@ -122,6 +122,27 @@ tbody tr:hover{background:var(--bg3)}
 .err-box{background:var(--red-bg);border:1px solid rgba(184,64,64,.3);border-radius:10px;padding:12px 16px;margin-bottom:14px;font-size:12px;color:var(--red);display:flex;gap:8px;align-items:flex-start}
 .lm{padding:40px;text-align:center;color:var(--ink3)}
 
+/* ── Analytics ── */
+.an-card{background:var(--card);border:1px solid var(--border);border-radius:11px;padding:16px 20px;margin-bottom:16px}
+.an-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px}
+.an-title{font-size:10px;font-weight:700;color:var(--ink2);text-transform:uppercase;letter-spacing:.12em}
+.an-ctrls{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ctog{display:inline-flex;background:var(--bg);border-radius:6px;padding:2px;gap:1px}
+.ctog button{padding:3px 10px;border:0;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;background:0;color:var(--ink3)}
+.ctog button.on{background:var(--ink);color:var(--bg3)}
+/* Art filter chips */
+.af-wrap{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:14px;position:relative}
+.af-wrap input{flex:1;min-width:160px;max-width:220px;padding:5px 10px;font-size:12px;background:var(--bg3);border:1px solid var(--border2);border-radius:7px;color:var(--ink);font-family:inherit;outline:0}
+.af-wrap input:focus{border-color:var(--ink)}
+.chip{display:inline-flex;align-items:center;gap:3px;padding:3px 8px;background:var(--ink);color:var(--bg3);border-radius:20px;font-size:10px;font-weight:600;white-space:nowrap}
+.chip .cx{cursor:pointer;opacity:.7;font-size:13px;line-height:1}.chip .cx:hover{opacity:1}
+.af-drop{position:absolute;top:100%;left:0;min-width:200px;background:var(--card);border:1px solid var(--border2);border-radius:8px;max-height:180px;overflow-y:auto;z-index:50;box-shadow:0 6px 20px rgba(0,0,0,.1);display:none}
+.af-drop.show{display:block}
+.af-drop div{padding:6px 12px;font-size:12px;cursor:pointer}.af-drop div:hover{background:var(--bg3)}
+.an-legend{display:flex;gap:14px;align-items:center;font-size:10px;color:var(--ink3)}
+.an-legend span{display:flex;align-items:center;gap:4px}
+.an-legend b{display:inline-block;width:12px;height:4px;border-radius:2px}
+
 @media(max-width:900px){.mc-row{grid-template-columns:repeat(3,1fr)}.funnel-steps{flex-wrap:wrap}}
 @media(max-width:600px){.mc-row{grid-template-columns:1fr 1fr}.hdr-right{gap:6px}}
 </style>
@@ -199,6 +220,12 @@ const SORT  = {1:{col:'date',dir:-1}, 2:{col:'date',dir:-1}};
 const SORT2 = {1:{col:'order_date',dir:-1}, 2:{col:'order_date',dir:-1}};
 const EXPAND= {1:false, 2:false};
 const FILT  = {1:{art:'',status:'all'}, 2:{art:'',status:'all'}};
+
+// Analytics state per cabinet
+const AN = {
+  1:{mode:'day', arts:[]},   // mode: day | week | month
+  2:{mode:'day', arts:[]}
+};
 
 /* ═══ Clock ═══ */
 setInterval(()=>{
@@ -564,6 +591,254 @@ function showDebug(cab){
   w.document.close();
 }
 
+/* ═══ ANALYTICS ═══ */
+
+// Get all unique articles from loaded data for a cabinet
+function getArtsForCab(cab){
+  const d=DATA[cab]; if(!d) return [];
+  const s=new Set();
+  d.orders.forEach(o=>{ if(o.supplierArticle) s.add(o.supplierArticle); });
+  return [...s].sort();
+}
+
+// Filter rows by selected articles
+function filterRowsByArt(rows, arts){
+  if(!arts||!arts.length) return rows;
+  return rows.filter(r=>arts.includes(r.art));
+}
+
+// Bucket key for grouping
+function bucketKey(isoDate, mode){
+  const d=new Date(isoDate+'T12:00:00');
+  if(mode==='day') return isoDate;
+  if(mode==='week'){
+    // ISO week: Monday-based
+    const day=d.getDay()||7; // 1=Mon..7=Sun
+    const mon=new Date(d); mon.setDate(d.getDate()-(day-1));
+    return mon.toISOString().slice(0,10);
+  }
+  if(mode==='month') return isoDate.slice(0,7);
+  return isoDate;
+}
+
+function bucketLabel(key, mode){
+  if(mode==='day') return ruDateShort(key);
+  if(mode==='week'){
+    const mon=new Date(key+'T12:00:00');
+    const sun=new Date(mon); sun.setDate(mon.getDate()+6);
+    return ruDateShort(key)+' – '+ruDateShort(sun.toISOString().slice(0,10));
+  }
+  if(mode==='month'){
+    const [y,m]=key.split('-');
+    return new Date(y,m-1,1).toLocaleDateString('ru',{month:'long',year:'numeric'});
+  }
+  return key;
+}
+
+// Aggregate rows into buckets {key, label, orders, sold, waiting, cancel, conv, revenue, avgDays}
+function aggBuckets(rows, mode){
+  const m={};
+  for(const r of rows){
+    const k=bucketKey(r.order_date, mode);
+    if(!m[k]) m[k]={key:k,orders:0,sold:0,waiting:0,cancel:0,returned:0,revenue:0,daysSum:0,daysCnt:0};
+    m[k].orders++;
+    m[k][r.status]++;
+    if(r.status==='sold'||r.status==='returned'){
+      m[k].revenue+=r.sale_price||0;
+      if(r.days_to_sale!=null){m[k].daysSum+=r.days_to_sale;m[k].daysCnt++;}
+    }
+  }
+  return Object.values(m)
+    .map(b=>({...b,
+      conv: b.orders>0?Math.round((b.sold+b.returned)/b.orders*100):0,
+      avgDays: b.daysCnt>0?(b.daysSum/b.daysCnt).toFixed(1):null,
+      label: bucketLabel(b.key, mode)
+    }))
+    .sort((a,b)=>a.key<b.key?-1:1);
+}
+
+// Draw SVG bar chart: orders (grey) + sold (green) bars, conv% line overlay
+function drawAnalyticsChart(buckets, mode){
+  if(!buckets.length) return '<div class="em">Нет данных для графика</div>';
+  const W=720,H=180,PL=44,PR=14,PT=16,PB=36;
+  const cW=W-PL-PR, cH=H-PT-PB;
+  const N=buckets.length;
+  const maxOrders=Math.max(...buckets.map(b=>b.orders),1);
+  const maxConv=100;
+  const gW=cW/N;
+  const bW=Math.max(4,Math.floor(gW*0.32));
+  const gap=Math.max(1,Math.floor(gW*0.05));
+
+  let bars='', convPts=[], xLabels='';
+
+  for(let i=0;i<N;i++){
+    const b=buckets[i];
+    const gx=PL+i*gW;
+    const cx=gx+gW/2;
+
+    // Orders bar (grey)
+    const ohPx=b.orders>0?(b.orders/maxOrders)*cH:0;
+    const ox=cx-bW-gap/2;
+    bars+=`<rect x="${ox}" y="${PT+cH-ohPx}" width="${bW}" height="${ohPx}" rx="2" fill="#D5D0C8" opacity=".7"/>`;
+
+    // Sold bar (green/amber/red by conv)
+    const soldH=b.orders>0?(b.sold/maxOrders)*cH:0;
+    const fill=b.conv>=60?'var(--green)':b.conv>=40?'var(--amber)':'var(--red)';
+    const sx=cx+gap/2;
+    bars+=`<rect x="${sx}" y="${PT+cH-soldH}" width="${bW}" height="${soldH}" rx="2" fill="${fill}" opacity=".85"/>`;
+
+    // Conv% line point
+    const ly=PT+cH-(b.conv/maxConv)*cH;
+    convPts.push(`${cx},${ly}`);
+
+    // X labels — show every Nth to avoid crowding
+    const step=N<=7?1:N<=14?2:N<=31?3:N<=52?4:2;
+    if(i%step===0||i===N-1){
+      const lbl=mode==='day'?b.label:mode==='week'?b.label.split('–')[0].trim():b.label;
+      xLabels+=`<text x="${cx}" y="${H-6}" text-anchor="middle" font-size="8" fill="var(--ink3)" font-family="inherit">${lbl}</text>`;
+    }
+  }
+
+  // Conv% polyline
+  const convLine = convPts.length>1
+    ?`<polyline points="${convPts.join(' ')}" fill="none" stroke="var(--blue)" stroke-width="1.5" stroke-linejoin="round" opacity=".8"/>`
+    :'';
+  // Conv% dots
+  const convDots = convPts.map((pt,i)=>{
+    const [cx,cy]=pt.split(',');
+    const b=buckets[i];
+    return `<circle cx="${cx}" cy="${cy}" r="3" fill="var(--blue)" opacity=".9">
+      <title>${b.label}: ${b.conv}% выкуп (${b.sold}/${b.orders})</title></circle>`;
+  }).join('');
+
+  // Y axis labels (left = orders count)
+  let yLeft='';
+  for(const v of [0, Math.round(maxOrders/2), maxOrders]){
+    const y=PT+cH-(v/maxOrders)*cH;
+    yLeft+=`<text x="${PL-5}" y="${y+3}" text-anchor="end" font-size="7" fill="var(--ink3)" font-family="inherit">${v}</text>`;
+    yLeft+=`<line x1="${PL}" x2="${W-PR}" y1="${y}" y2="${y}" stroke="var(--border)" stroke-width="0.5"/>`;
+  }
+  // Y axis labels (right = conv%)
+  let yRight='';
+  for(const v of [0,50,100]){
+    const y=PT+cH-(v/100)*cH;
+    yRight+=`<text x="${W-PR+4}" y="${y+3}" font-size="7" fill="var(--blue)" font-family="inherit" opacity=".7">${v}%</text>`;
+  }
+
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">
+    ${yLeft}${yRight}${bars}${convLine}${convDots}${xLabels}
+  </svg>`;
+}
+
+// Article autocomplete filter UI
+function artFilterHTML(cab){
+  const chips=AN[cab].arts.map((a,i)=>
+    `<span class="chip">${a}<span class="cx" onclick="anRmArt(${cab},${i})">×</span></span>`
+  ).join('');
+  return `<div class="af-wrap" id="af${cab}">
+    ${chips}
+    <input id="afi${cab}" placeholder="🔎 фильтр по артикулу" oninput="anArtInput(${cab})" onfocus="anArtInput(${cab})" autocomplete="off">
+    <div class="af-drop" id="afd${cab}"></div>
+  </div>`;
+}
+
+function anArtInput(cab){
+  const inp=document.getElementById('afi'+cab);
+  const dd=document.getElementById('afd'+cab);
+  const q=(inp.value||'').toLowerCase().trim();
+  if(!q){dd.classList.remove('show');return;}
+  const all=getArtsForCab(cab).filter(a=>a.toLowerCase().includes(q)&&!AN[cab].arts.includes(a)).slice(0,12);
+  if(!all.length){dd.classList.remove('show');return;}
+  dd.innerHTML=all.map(a=>`<div onclick="anAddArt(${cab},'${a.replace(/'/g,"\\'")}')">${a}</div>`).join('');
+  dd.classList.add('show');
+}
+function anAddArt(cab,art){
+  AN[cab].arts.push(art);
+  document.getElementById('afi'+cab).value='';
+  document.getElementById('afd'+cab).classList.remove('show');
+  renderCab(cab);
+}
+function anRmArt(cab,i){
+  AN[cab].arts.splice(i,1);
+  renderCab(cab);
+}
+function anSetMode(cab,mode){
+  AN[cab].mode=mode;
+  renderCab(cab);
+}
+
+// Close dropdowns on outside click
+document.addEventListener('click',e=>{
+  if(!e.target.closest('.af-wrap'))
+    document.querySelectorAll('.af-drop').forEach(d=>d.classList.remove('show'));
+});
+
+// Build full analytics section HTML
+function buildAnalytics(rows, cab){
+  const mode=AN[cab].mode;
+  const filtered=filterRowsByArt(rows, AN[cab].arts);
+  const buckets=aggBuckets(filtered, mode);
+
+  const onD=mode==='day'?'on':'', onW=mode==='week'?'on':'', onM=mode==='month'?'on':'';
+
+  const chart=drawAnalyticsChart(buckets, mode);
+
+  // Summary stats for filtered rows
+  const fTotal=filtered.length;
+  const fSold=filtered.filter(r=>r.status==='sold').length;
+  const fConv=fTotal>0?Math.round(fSold/fTotal*100):0;
+  const fDays=filtered.filter(r=>r.days_to_sale!=null).map(r=>r.days_to_sale);
+  const fAvg=fDays.length>0?(fDays.reduce((a,b)=>a+b,0)/fDays.length).toFixed(1):null;
+  const fConvCls=fConv>=60?'cp-g':fConv>=40?'cp-a':'cp-r';
+
+  // Best and worst bucket
+  const sold_buckets=buckets.filter(b=>b.orders>=3);
+  const best=sold_buckets.length?[...sold_buckets].sort((a,b)=>b.conv-a.conv)[0]:null;
+  const worst=sold_buckets.length?[...sold_buckets].sort((a,b)=>a.conv-b.conv)[0]:null;
+
+  return `<div class="an-card">
+    <div class="an-hdr">
+      <span class="an-title">📈 Динамика выкупаемости</span>
+      <div class="an-ctrls">
+        <div class="an-legend">
+          <span><b style="background:#D5D0C8"></b> Заказы</span>
+          <span><b style="background:var(--green)"></b> Выкупы</span>
+          <span><b style="background:var(--blue)"></b> % выкупа</span>
+        </div>
+        <div class="ctog">
+          <button class="${onD}" onclick="anSetMode(${cab},'day')">День</button>
+          <button class="${onW}" onclick="anSetMode(${cab},'week')">Неделя</button>
+          <button class="${onM}" onclick="anSetMode(${cab},'month')">Месяц</button>
+        </div>
+      </div>
+    </div>
+    ${artFilterHTML(cab)}
+    ${chart}
+    <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap">
+      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 14px;flex:1;min-width:120px">
+        <div style="font-size:9px;color:var(--ink3);text-transform:uppercase;letter-spacing:.1em;font-weight:700;margin-bottom:3px">Процент выкупа</div>
+        <span class="conv-pill ${fConvCls}" style="font-size:14px">${fConv}%</span>
+        <div style="font-size:10px;color:var(--ink3);margin-top:2px">${fSold} из ${fTotal}</div>
+      </div>
+      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 14px;flex:1;min-width:120px">
+        <div style="font-size:9px;color:var(--ink3);text-transform:uppercase;letter-spacing:.1em;font-weight:700;margin-bottom:3px">Ср. дней до выкупа</div>
+        <div style="font-size:18px;font-weight:700">${fAvg!=null?fAvg:'—'}</div>
+        <div style="font-size:10px;color:var(--ink3);margin-top:2px">${fDays.length} выкупов с датой</div>
+      </div>
+      ${best?`<div style="background:var(--green-bg);border:1px solid rgba(45,122,79,.2);border-radius:8px;padding:8px 14px;flex:1;min-width:160px">
+        <div style="font-size:9px;color:var(--green);text-transform:uppercase;letter-spacing:.1em;font-weight:700;margin-bottom:3px">Лучший период</div>
+        <div style="font-size:12px;font-weight:700;color:var(--green)">${best.label}</div>
+        <div style="font-size:11px;color:var(--green)">${best.conv}% · ${best.sold}/${best.orders} шт</div>
+      </div>`:''}
+      ${worst&&worst.key!==best?.key?`<div style="background:var(--red-bg);border:1px solid rgba(184,64,64,.2);border-radius:8px;padding:8px 14px;flex:1;min-width:160px">
+        <div style="font-size:9px;color:var(--red);text-transform:uppercase;letter-spacing:.1em;font-weight:700;margin-bottom:3px">Худший период</div>
+        <div style="font-size:12px;font-weight:700;color:var(--red)">${worst.label}</div>
+        <div style="font-size:11px;color:var(--red)">${worst.conv}% · ${worst.sold}/${worst.orders} шт</div>
+      </div>`:''}
+    </div>
+  </div>`;
+}
+
 /* ═══ Render ═══ */
 function renderCab(cab){
   if(!DATA[cab])return;
@@ -612,6 +887,7 @@ function renderCab(cab){
     </div>
   </div>`;
 
+  html+=buildAnalytics(rows,cab);
   html+=buildDayTable(days,cab);
   html+=buildDetailTable(rows,cab);
 
