@@ -428,15 +428,6 @@ function buildFunnel(orders,sales){
       const daysSince=(Date.now()-oDate)/864e5;
       status=daysSince>21?'cancel':'waiting';
     }
-
-    let status;
-    if(o.isCancel) status='cancel';
-    else if(sale&&isReturn) status='returned';
-    else if(sale) status='sold';
-    else{
-      const daysSince=(Date.now()-new Date(o.date||0))/864e5;
-      status=daysSince>21?'cancel':'waiting';
-    }
     const orderDate=(o.date||'').slice(0,10);
     const saleDate =sale?(sale.date||'').slice(0,10):null;
     const daysToSale=sale&&saleDate&&orderDate?Math.round((new Date(saleDate)-new Date(orderDate))/864e5):null;
