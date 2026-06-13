@@ -355,48 +355,41 @@ async function loadCab(cab,f,t){
 }
 
 /* ═══ Funnel matching ═══
-   Rules that prevent false positives:
-   1. odid match: sale.date must be >= order.date (a redemption cannot precede the order).
-   2. Fallback (no odid): sale.date must be strictly AFTER order.date (diff > 0)
-      AND within 60 days. Same-day matches without odid are rejected because they
-      are almost certainly unrelated transactions with the same article+size.
-   3. Returns (saleID starts with "R") are indexed separately and never treated as sales.
+   Key: gNumber (сборочное задание) — есть у 100% записей.
+   gNumber один на несколько позиций → внутри группы матчим по
+   supplierArticle + techSize. Дата продажи обязана быть >= даты заказа.
+   Возвраты (saleID начинается с "R") индексируются отдельно.
 ═══ */
 function buildFunnel(orders,sales){
-  const saleByOdid={};
-  const returnByOdid={};
+  // Индекс продаж: gNumber → Map(art|sz → sale)
+  const saleIdx   = {};   // gNumber → { 'art|sz': sale }
+  const returnIdx = {};   // gNumber → { 'art|sz': sale }
+
   for(const s of sales){
-    if(!s.odid) continue;
-    if(s.saleID&&s.saleID.startsWith('R')) returnByOdid[s.odid]=s;
-    else saleByOdid[s.odid]=s;
+    const g=s.gNumber; if(!g) continue;
+    const key=(s.supplierArticle||'')+'|'+(s.techSize||'');
+    const isRet=s.saleID&&s.saleID.startsWith('R');
+    const idx=isRet?returnIdx:saleIdx;
+    if(!idx[g]) idx[g]={};
+    // Если несколько продаж с тем же gNumber+art+sz — берём последнюю по дате
+    if(!idx[g][key]||new Date(s.date)>new Date(idx[g][key].date)) idx[g][key]=s;
   }
+
   return orders.map(o=>{
-    const odid=o.odid;
+    const g=o.gNumber;
     const oDate=new Date(o.date||0);
-    let sale=null,isReturn=false;
+    const key=(o.supplierArticle||'')+'|'+(o.techSize||'');
 
-    // Primary match: by odid, sale must be on or after the order date
-    if(odid&&saleByOdid[odid]){
-      const candidate=saleByOdid[odid];
-      if(new Date(candidate.date||0)>=oDate) sale=candidate;
+    let sale=null, isReturn=false;
+
+    // Основной матч: gNumber + артикул + размер, дата продажи >= даты заказа
+    if(g&&saleIdx[g]&&saleIdx[g][key]){
+      const c=saleIdx[g][key];
+      if(new Date(c.date||0)>=oDate) sale=c;
     }
 
-    // Fallback match: by article+size, sale strictly AFTER order (diff > 0), within 60 days
-    if(!sale&&!odid){
-      const art=o.supplierArticle||'',sz=o.techSize||'';
-      let best=null,bestDiff=Infinity;
-      for(const s of sales){
-        if(s.saleID&&s.saleID.startsWith('R')) continue;
-        if((s.supplierArticle||'')===art&&(s.techSize||'')===sz){
-          const sd=new Date(s.date||0),diff=sd-oDate;
-          // diff must be > 0: redemption strictly after order, within 60 days
-          if(diff>0&&diff<60*864e5&&diff<bestDiff){bestDiff=diff;best=s;}
-        }
-      }
-      sale=best||null;
-    }
-
-    if(odid&&returnByOdid[odid]) isReturn=true;
+    // Возврат: тот же gNumber + art + sz
+    if(g&&returnIdx[g]&&returnIdx[g][key]) isReturn=true;
 
     let status;
     if(o.isCancel) status='cancel';
@@ -482,14 +475,27 @@ function showDebug(cab){
     txt+=`\n  Заказов, у которых gNumber совпадает с продажей: ${matched}\n`;
   }
 
-  txt+='\n╔══ ПЕРВЫЕ 10 ЗАКАЗОВ (только ключевые поля) ══╗\n';
-  for(const o of d.orders.slice(0,10)){
-    txt+=`  date=${o.date}  art=${o.supplierArticle}  sz=${o.techSize}  gNumber=${o.gNumber||'нет'}  srid=${o.srid||'нет'}  rid=${o.rid||'нет'}\n`;
+  txt+='\n╔══ ПЕРВЫЕ 15 ЗАКАЗОВ + МАТЧ по gNumber ══╗\n';
+  // Build quick sale index for debug
+  const dbgIdx={};
+  for(const s of d.sales){
+    if(!s.gNumber||s.saleID?.startsWith('R')) continue;
+    const k=s.gNumber+'|'+(s.supplierArticle||'')+'|'+(s.techSize||'');
+    if(!dbgIdx[k]) dbgIdx[k]=s;
   }
-
-  txt+='\n╔══ ПЕРВЫЕ 10 ПРОДАЖ (только ключевые поля) ══╗\n';
-  for(const s of d.sales.slice(0,10)){
-    txt+=`  date=${s.date}  art=${s.supplierArticle}  sz=${s.techSize}  saleID=${s.saleID}  gNumber=${s.gNumber||'нет'}  srid=${s.srid||'нет'}  rid=${s.rid||'нет'}\n`;
+  for(const o of d.orders.slice(0,15)){
+    const k=o.gNumber+'|'+(o.supplierArticle||'')+'|'+(o.techSize||'');
+    const sale=dbgIdx[k];
+    const sameDay=sale&&(sale.date||'').slice(0,10)===(o.date||'').slice(0,10);
+    txt+=`\n  ЗАКАЗ:   ${o.date}  art=${o.supplierArticle}  sz=${o.techSize}  gNumber=${o.gNumber}\n`;
+    if(sale){
+      const days=Math.round((new Date(sale.date)-new Date(o.date))/864e5);
+      txt+=`  ПРОДАЖА: ${sale.date}  saleID=${sale.saleID}  price=${sale.finishedPrice}  +${days}дн`;
+      txt+=sameDay?' ⚠️ ТОТЖЕ ДЕНЬ':'';
+      txt+='\n';
+    } else {
+      txt+=`  ПРОДАЖА: не найдена\n`;
+    }
   }
 
   const w=window.open('','_blank','width=980,height=800,scrollbars=yes');
