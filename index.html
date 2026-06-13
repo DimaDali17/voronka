@@ -355,41 +355,79 @@ async function loadCab(cab,f,t){
 }
 
 /* ═══ Funnel matching ═══
-   Key: gNumber (сборочное задание) — есть у 100% записей.
-   gNumber один на несколько позиций → внутри группы матчим по
-   supplierArticle + techSize. Дата продажи обязана быть >= даты заказа.
-   Возвраты (saleID начинается с "R") индексируются отдельно.
+   srid структура: PREFIX.HASH.POSITION.SUB
+   Пример заказа:  ef.r3f61a08fb4924183b9d2c6af6239d1f1.3.0
+   Пример продажи: ef.r3f61a08fb4924183b9d2c6af6239d1f1.3.0  ← может совпасть целиком
+   Или префикс отличается — тогда матчим по HASH.POSITION.SUB (всё после первой точки).
+
+   Иерархия матчинга:
+   1. srid целиком (точное совпадение)
+   2. srid без префикса (HASH.POS.SUB)
+   3. gNumber + supplierArticle + techSize (fallback)
+   Во всех случаях: sale.date >= order.date обязательно.
 ═══ */
 function buildFunnel(orders,sales){
-  // Индекс продаж: gNumber → Map(art|sz → sale)
-  const saleIdx   = {};   // gNumber → { 'art|sz': sale }
-  const returnIdx = {};   // gNumber → { 'art|sz': sale }
+  // Разобрать srid: вернуть часть после первой точки (HASH.POS.SUB)
+  const sridSuffix=s=>{if(!s)return'';const i=s.indexOf('.');return i>=0?s.slice(i+1):s;};
+
+  // Индексы продаж
+  const byFullSrid  ={};   // srid целиком → sale
+  const bySufSrid   ={};   // HASH.POS.SUB → sale
+  const byGArtSz    ={};   // gNumber|art|sz → sale
+  const returnByGArtSz={};
 
   for(const s of sales){
-    const g=s.gNumber; if(!g) continue;
-    const key=(s.supplierArticle||'')+'|'+(s.techSize||'');
     const isRet=s.saleID&&s.saleID.startsWith('R');
-    const idx=isRet?returnIdx:saleIdx;
-    if(!idx[g]) idx[g]={};
-    // Если несколько продаж с тем же gNumber+art+sz — берём последнюю по дате
-    if(!idx[g][key]||new Date(s.date)>new Date(idx[g][key].date)) idx[g][key]=s;
+    const gKey=(s.gNumber||'')+'|'+(s.supplierArticle||'')+'|'+(s.techSize||'');
+
+    if(isRet){
+      if(!returnByGArtSz[gKey]) returnByGArtSz[gKey]=s;
+      continue;
+    }
+    // srid индексы
+    if(s.srid){
+      if(!byFullSrid[s.srid]) byFullSrid[s.srid]=s;
+      const suf=sridSuffix(s.srid);
+      if(suf&&!bySufSrid[suf]) bySufSrid[suf]=s;
+    }
+    // gNumber fallback
+    if(!byGArtSz[gKey]) byGArtSz[gKey]=s;
   }
 
   return orders.map(o=>{
-    const g=o.gNumber;
     const oDate=new Date(o.date||0);
-    const key=(o.supplierArticle||'')+'|'+(o.techSize||'');
+    const g=o.gNumber||'';
+    const gKey=g+'|'+(o.supplierArticle||'')+'|'+(o.techSize||'');
+    const suf=sridSuffix(o.srid);
 
-    let sale=null, isReturn=false;
+    let sale=null,matchType='—';
 
-    // Основной матч: gNumber + артикул + размер, дата продажи >= даты заказа
-    if(g&&saleIdx[g]&&saleIdx[g][key]){
-      const c=saleIdx[g][key];
-      if(new Date(c.date||0)>=oDate) sale=c;
+    // 1. Точное совпадение srid
+    if(o.srid&&byFullSrid[o.srid]){
+      const c=byFullSrid[o.srid];
+      if(new Date(c.date||0)>=oDate){sale=c;matchType='srid-full';}
+    }
+    // 2. srid без префикса (HASH.POS.SUB)
+    if(!sale&&suf&&bySufSrid[suf]){
+      const c=bySufSrid[suf];
+      if(new Date(c.date||0)>=oDate){sale=c;matchType='srid-suffix';}
+    }
+    // 3. gNumber + art + sz
+    if(!sale&&byGArtSz[gKey]){
+      const c=byGArtSz[gKey];
+      if(new Date(c.date||0)>=oDate){sale=c;matchType='gNumber';}
     }
 
-    // Возврат: тот же gNumber + art + sz
-    if(g&&returnIdx[g]&&returnIdx[g][key]) isReturn=true;
+    const isReturn=!!returnByGArtSz[gKey];
+
+    let status;
+    if(o.isCancel) status='cancel';
+    else if(sale&&isReturn) status='returned';
+    else if(sale) status='sold';
+    else{
+      const daysSince=(Date.now()-oDate)/864e5;
+      status=daysSince>21?'cancel':'waiting';
+    }
 
     let status;
     if(o.isCancel) status='cancel';
@@ -408,7 +446,7 @@ function buildFunnel(orders,sales){
       art:o.supplierArticle||'—',size:o.techSize||'—',
       name:o.subject||o.category||'—',
       price:o.finishedPrice||o.priceWithDisc||o.totalPrice||0,
-      wh:o.warehouseName||'—',odid:odid||null,
+      wh:o.warehouseName||'—',gNumber:g||null,
       status,sale_date:saleDate,
       sale_price:sale?(sale.finishedPrice||sale.priceWithDisc||sale.totalPrice||0):null,
       days_to_sale:daysToSale,region:o.regionName||o.oblast||'—'
@@ -476,44 +514,58 @@ function showDebug(cab){
   }
 
   // srid analysis
-  txt+='\n╔══ АНАЛИЗ srid ══╗\n';
-  txt+='Структура srid: PREFIX.HASH.N.M\n\n';
+  txt+='\n╔══ АНАЛИЗ srid + СТАТИСТИКА МАТЧИНГА ══╗\n';
+  const sridSuffix=s=>{if(!s)return'';const i=s.indexOf('.');return i>=0?s.slice(i+1):s;};
 
-  // Parse srid parts
-  const parseSrid=s=>{const p=s.split('.');return{full:s,prefix:p[0],hash:p[1]||'',n:p[2]||'',m:p[3]||''};};
-
-  // Build hash index for sales
-  const saleByHash={}, saleByFull={};
+  const byFullSrid={},bySufSrid={},byGArtSz={};
   for(const s of d.sales){
     if(!s.srid||s.saleID?.startsWith('R')) continue;
-    const p=parseSrid(s.srid);
-    if(p.hash){if(!saleByHash[p.hash])saleByHash[p.hash]=[];saleByHash[p.hash].push(s);}
-    saleByFull[s.srid]=s;
+    if(!byFullSrid[s.srid]) byFullSrid[s.srid]=s;
+    const suf=sridSuffix(s.srid);
+    if(suf&&!bySufSrid[suf]) bySufSrid[suf]=s;
+    const gk=(s.gNumber||'')+'|'+(s.supplierArticle||'')+'|'+(s.techSize||'');
+    if(!byGArtSz[gk]) byGArtSz[gk]=s;
   }
 
-  // Check order srid matches
-  let fullMatch=0, hashMatch=0, noMatch=0;
+  let mFull=0,mSuf=0,mG=0,mNone=0;
   for(const o of d.orders){
-    if(!o.srid){noMatch++;continue;}
-    const p=parseSrid(o.srid);
-    if(saleByFull[o.srid]) fullMatch++;
-    else if(p.hash&&saleByHash[p.hash]) hashMatch++;
-    else noMatch++;
+    const oDate=new Date(o.date||0);
+    const suf=sridSuffix(o.srid);
+    const gk=(o.gNumber||'')+'|'+(o.supplierArticle||'')+'|'+(o.techSize||'');
+    const c1=o.srid&&byFullSrid[o.srid];
+    const c2=suf&&bySufSrid[suf];
+    const c3=byGArtSz[gk];
+    const ok=c=>c&&new Date(c.date||0)>=oDate;
+    if(ok(c1)) mFull++;
+    else if(ok(c2)) mSuf++;
+    else if(ok(c3)) mG++;
+    else mNone++;
   }
-  txt+=`  Полное совпадение srid (order.srid === sale.srid):  ${fullMatch}\n`;
-  txt+=`  Совпадение по HASH части srid:                      ${hashMatch}\n`;
-  txt+=`  Нет совпадения:                                     ${noMatch}\n\n`;
+  txt+=`  srid точный матч:         ${mFull}\n`;
+  txt+=`  srid suffix матч:         ${mSuf}\n`;
+  txt+=`  gNumber+art+sz матч:      ${mG}\n`;
+  txt+=`  Нет матча (waiting/cancel): ${mNone}\n`;
+  txt+=`  ИТОГО найдено:            ${mFull+mSuf+mG} / ${d.orders.length}\n\n`;
 
-  txt+='Примеры:\n';
+  txt+='Примеры (первые 8 заказов):\n';
   for(const o of d.orders.slice(0,8)){
-    if(!o.srid) continue;
-    const p=parseSrid(o.srid);
-    const byFull=saleByFull[o.srid];
-    const byHash=p.hash?saleByHash[p.hash]:null;
-    const match=byFull||(byHash&&byHash[0]);
-    txt+=`  ЗАКАЗ   srid=${o.srid}\n`;
-    if(match) txt+=`  ПРОДАЖА srid=${match.srid}  date=${match.date}  saleID=${match.saleID}\n`;
-    else       txt+=`  ПРОДАЖА не найдена\n`;
+    const oDate=new Date(o.date||0);
+    const suf=sridSuffix(o.srid);
+    const gk=(o.gNumber||'')+'|'+(o.supplierArticle||'')+'|'+(o.techSize||'');
+    const c1=o.srid&&byFullSrid[o.srid];
+    const c2=suf&&bySufSrid[suf];
+    const c3=byGArtSz[gk];
+    const ok=c=>c&&new Date(c.date||0)>=oDate;
+    const match=ok(c1)?{s:c1,t:'srid-full'}:ok(c2)?{s:c2,t:'srid-suffix'}:ok(c3)?{s:c3,t:'gNumber'}:null;
+    txt+=`  ЗАКАЗ ${o.date} art=${o.supplierArticle} sz=${o.techSize}\n`;
+    txt+=`    srid=${o.srid}\n`;
+    if(match){
+      const days=Math.round((new Date(match.s.date)-oDate)/864e5);
+      txt+=`  МАТЧ [${match.t}] ${match.s.date} saleID=${match.s.saleID} +${days}дн\n`;
+      txt+=`    srid=${match.s.srid}\n`;
+    } else {
+      txt+=`  НЕТ МАТЧА\n`;
+    }
     txt+='\n';
   }
 
