@@ -165,6 +165,7 @@ tbody tr:hover{background:var(--bg3)}
       <span id="load-ic">↻</span> Загрузить
     </button>
     <span class="upd" id="upd-lbl"></span>
+    <button class="btn" onclick="showDebug(CUR_TAB)" style="border-color:var(--amber);color:var(--amber)">🔍 Данные</button>
     <button class="btn" onclick="openSetup()">⚙ Настройки</button>
   </div>
 </div>
@@ -346,7 +347,7 @@ async function loadCab(cab,f,t){
     const orders=Array.isArray(ordRaw)?ordRaw:[];
     const sales =Array.isArray(saleRaw)?saleRaw:[];
     const filtered=orders.filter(o=>{const d=(o.date||'').slice(0,10);return d>=f&&d<=t;});
-    DATA[cab]={orders:filtered,sales,dateFrom:f,dateTo:t};
+    DATA[cab]={orders:filtered,sales,dateFrom:f,dateTo:t,salesFrom:saleFromDate};
     renderCab(cab);
   }catch(e){
     document.getElementById(appId).innerHTML=`<div class="err-box">⚠️ Кабинет ${cab===1?'Easyform':'EZFR'}: ${e.message}</div>`;
@@ -438,6 +439,57 @@ function aggByDay(rows){
     conv:d.total>0?Math.round((d.sold+d.returned)/d.total*100):0,
     avg_days:d.daysCnt>0?(d.daysSum/d.daysCnt).toFixed(1):null
   }));
+}
+
+/* ═══ DEBUG ═══ */
+function showDebug(cab){
+  const d=DATA[cab];if(!d){alert('Нет данных — сначала загрузите');return;}
+  const salesIdx={};
+  for(const s of d.sales) if(s.odid) salesIdx[s.odid]=salesIdx[s.odid]||s;
+
+  const withOdidO=d.orders.filter(o=>o.odid).length;
+  const withOdidS=d.sales.filter(s=>s.odid).length;
+  const saleIds=new Set(d.sales.filter(s=>!s.saleID?.startsWith('R')&&s.odid).map(s=>s.odid));
+  const matched=d.orders.filter(o=>o.odid&&saleIds.has(o.odid)).length;
+
+  let txt='';
+  txt+='╔══ СТАТИСТИКА ДАННЫХ ══╗\n';
+  txt+=`  Заказов загружено:         ${d.orders.length}\n`;
+  txt+=`  Продаж загружено:          ${d.sales.length}\n`;
+  txt+=`  Заказов с odid:            ${withOdidO} / ${d.orders.length} (${d.orders.length?Math.round(withOdidO/d.orders.length*100):0}%)\n`;
+  txt+=`  Продаж с odid:             ${withOdidS} / ${d.sales.length} (${d.sales.length?Math.round(withOdidS/d.sales.length*100):0}%)\n`;
+  txt+=`  Заказов нашли продажу:     ${matched}\n`;
+  txt+=`  Период заказов:            ${d.dateFrom} — ${d.dateTo}\n`;
+  txt+=`  Sales загружены с:         ${d.salesFrom||'?'}\n\n`;
+
+  txt+='╔══ ПЕРВЫЕ 5 ПРОДАЖ (сырые из API) ══╗\n';
+  for(const s of d.sales.slice(0,5)){
+    txt+=`  date=${s.date}  saleID=${s.saleID}  odid=${s.odid||'нет'}  art=${s.supplierArticle}  sz=${s.techSize}  price=${s.finishedPrice}\n`;
+  }
+
+  txt+='\n╔══ ПЕРВЫЕ 15 ЗАКАЗОВ + ИХ МАТЧ ══╗\n';
+  for(const o of d.orders.slice(0,15)){
+    const sale=o.odid?salesIdx[o.odid]:null;
+    const sameDay=sale&&(sale.date||'').slice(0,10)===(o.date||'').slice(0,10);
+    txt+=`\n  ЗАКАЗ:  date=${o.date}  art=${o.supplierArticle}  sz=${o.techSize}  odid=${o.odid||'нет'}  cancel=${o.isCancel}\n`;
+    if(sale){
+      txt+=`  ПРОДАЖА:date=${sale.date}  saleID=${sale.saleID}  odid=${sale.odid}  price=${sale.finishedPrice}`;
+      txt+=sameDay?' ⚠️ ТОТЖЕ ДЕНЬ':'';
+      txt+='\n';
+    } else {
+      txt+=`  ПРОДАЖА: нет совпадения по odid\n`;
+    }
+  }
+
+  txt+='\n╔══ ГРУППИРОВКА: сколько продаж по дате ══╗\n';
+  const byDay={};
+  for(const s of d.sales) if(!s.saleID?.startsWith('R')){const dd=(s.date||'').slice(0,10);byDay[dd]=(byDay[dd]||0)+1;}
+  for(const dd of Object.keys(byDay).sort().slice(-14)) txt+=`  ${dd}: ${byDay[dd]} продаж\n`;
+
+  const w=window.open('','_blank','width=960,height=750,scrollbars=yes');
+  if(!w){alert('Браузер заблокировал окно. Разрешите pop-up для этой страницы.');return;}
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Debug WB кабинет ${cab}</title></head><body style="margin:0;background:#1a1a1a;color:#d4d0c8;font:13px/1.6 monospace;padding:20px"><pre style="white-space:pre-wrap">${txt}</pre></body></html>`);
+  w.document.close();
 }
 
 /* ═══ Render ═══ */
