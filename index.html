@@ -475,6 +475,48 @@ function showDebug(cab){
     txt+=`\n  Заказов, у которых gNumber совпадает с продажей: ${matched}\n`;
   }
 
+  // srid analysis
+  txt+='\n╔══ АНАЛИЗ srid ══╗\n';
+  txt+='Структура srid: PREFIX.HASH.N.M\n\n';
+
+  // Parse srid parts
+  const parseSrid=s=>{const p=s.split('.');return{full:s,prefix:p[0],hash:p[1]||'',n:p[2]||'',m:p[3]||''};};
+
+  // Build hash index for sales
+  const saleByHash={}, saleByFull={};
+  for(const s of d.sales){
+    if(!s.srid||s.saleID?.startsWith('R')) continue;
+    const p=parseSrid(s.srid);
+    if(p.hash){if(!saleByHash[p.hash])saleByHash[p.hash]=[];saleByHash[p.hash].push(s);}
+    saleByFull[s.srid]=s;
+  }
+
+  // Check order srid matches
+  let fullMatch=0, hashMatch=0, noMatch=0;
+  for(const o of d.orders){
+    if(!o.srid){noMatch++;continue;}
+    const p=parseSrid(o.srid);
+    if(saleByFull[o.srid]) fullMatch++;
+    else if(p.hash&&saleByHash[p.hash]) hashMatch++;
+    else noMatch++;
+  }
+  txt+=`  Полное совпадение srid (order.srid === sale.srid):  ${fullMatch}\n`;
+  txt+=`  Совпадение по HASH части srid:                      ${hashMatch}\n`;
+  txt+=`  Нет совпадения:                                     ${noMatch}\n\n`;
+
+  txt+='Примеры:\n';
+  for(const o of d.orders.slice(0,8)){
+    if(!o.srid) continue;
+    const p=parseSrid(o.srid);
+    const byFull=saleByFull[o.srid];
+    const byHash=p.hash?saleByHash[p.hash]:null;
+    const match=byFull||(byHash&&byHash[0]);
+    txt+=`  ЗАКАЗ   srid=${o.srid}\n`;
+    if(match) txt+=`  ПРОДАЖА srid=${match.srid}  date=${match.date}  saleID=${match.saleID}\n`;
+    else       txt+=`  ПРОДАЖА не найдена\n`;
+    txt+='\n';
+  }
+
   txt+='\n╔══ ПЕРВЫЕ 15 ЗАКАЗОВ + МАТЧ по gNumber ══╗\n';
   // Build quick sale index for debug
   const dbgIdx={};
