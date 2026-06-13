@@ -355,70 +355,45 @@ async function loadCab(cab,f,t){
 }
 
 /* ═══ Funnel matching ═══
-   srid структура: PREFIX.HASH.POSITION.SUB
-   Пример заказа:  ef.r3f61a08fb4924183b9d2c6af6239d1f1.3.0
-   Пример продажи: ef.r3f61a08fb4924183b9d2c6af6239d1f1.3.0  ← может совпасть целиком
-   Или префикс отличается — тогда матчим по HASH.POSITION.SUB (всё после первой точки).
-
-   Иерархия матчинга:
-   1. srid целиком (точное совпадение)
-   2. srid без префикса (HASH.POS.SUB)
-   3. gNumber + supplierArticle + techSize (fallback)
-   Во всех случаях: sale.date >= order.date обязательно.
+   Ключ: srid (Sale Request ID) — совпадает точно у 100% выкупленных заказов.
+   Структура: PREFIX.HASH.POSITION.SUB
+   Матчим сначала по полному srid, затем по суффиксу (без префикса).
+   Обязательное условие: sale.date >= order.date.
+   gNumber-fallback убран — давал ложные срабатывания.
 ═══ */
 function buildFunnel(orders,sales){
-  // Разобрать srid: вернуть часть после первой точки (HASH.POS.SUB)
   const sridSuffix=s=>{if(!s)return'';const i=s.indexOf('.');return i>=0?s.slice(i+1):s;};
 
-  // Индексы продаж
-  const byFullSrid  ={};   // srid целиком → sale
-  const bySufSrid   ={};   // HASH.POS.SUB → sale
-  const byGArtSz    ={};   // gNumber|art|sz → sale
-  const returnByGArtSz={};
+  const byFullSrid={};   // srid целиком → sale
+  const bySufSrid ={};   // HASH.POS.SUB → sale
+  const returnSet =new Set(); // srid суффиксов возвратов
 
   for(const s of sales){
+    if(!s.srid) continue;
+    const suf=sridSuffix(s.srid);
     const isRet=s.saleID&&s.saleID.startsWith('R');
-    const gKey=(s.gNumber||'')+'|'+(s.supplierArticle||'')+'|'+(s.techSize||'');
-
-    if(isRet){
-      if(!returnByGArtSz[gKey]) returnByGArtSz[gKey]=s;
-      continue;
-    }
-    // srid индексы
-    if(s.srid){
-      if(!byFullSrid[s.srid]) byFullSrid[s.srid]=s;
-      const suf=sridSuffix(s.srid);
-      if(suf&&!bySufSrid[suf]) bySufSrid[suf]=s;
-    }
-    // gNumber fallback
-    if(!byGArtSz[gKey]) byGArtSz[gKey]=s;
+    if(isRet){ returnSet.add(s.srid); if(suf) returnSet.add(suf); continue; }
+    if(!byFullSrid[s.srid]) byFullSrid[s.srid]=s;
+    if(suf&&!bySufSrid[suf]) bySufSrid[suf]=s;
   }
 
   return orders.map(o=>{
     const oDate=new Date(o.date||0);
-    const g=o.gNumber||'';
-    const gKey=g+'|'+(o.supplierArticle||'')+'|'+(o.techSize||'');
     const suf=sridSuffix(o.srid);
-
-    let sale=null,matchType='—';
+    let sale=null;
 
     // 1. Точное совпадение srid
     if(o.srid&&byFullSrid[o.srid]){
       const c=byFullSrid[o.srid];
-      if(new Date(c.date||0)>=oDate){sale=c;matchType='srid-full';}
+      if(new Date(c.date||0)>=oDate) sale=c;
     }
-    // 2. srid без префикса (HASH.POS.SUB)
+    // 2. srid без префикса
     if(!sale&&suf&&bySufSrid[suf]){
       const c=bySufSrid[suf];
-      if(new Date(c.date||0)>=oDate){sale=c;matchType='srid-suffix';}
-    }
-    // 3. gNumber + art + sz
-    if(!sale&&byGArtSz[gKey]){
-      const c=byGArtSz[gKey];
-      if(new Date(c.date||0)>=oDate){sale=c;matchType='gNumber';}
+      if(new Date(c.date||0)>=oDate) sale=c;
     }
 
-    const isReturn=!!returnByGArtSz[gKey];
+    const isReturn=!!(o.srid&&returnSet.has(o.srid))||(suf&&returnSet.has(suf));
 
     let status;
     if(o.isCancel) status='cancel';
@@ -437,7 +412,7 @@ function buildFunnel(orders,sales){
       art:o.supplierArticle||'—',size:o.techSize||'—',
       name:o.subject||o.category||'—',
       price:o.finishedPrice||o.priceWithDisc||o.totalPrice||0,
-      wh:o.warehouseName||'—',gNumber:g||null,
+      wh:o.warehouseName||'—',srid:o.srid||null,
       status,sale_date:saleDate,
       sale_price:sale?(sale.finishedPrice||sale.priceWithDisc||sale.totalPrice||0):null,
       days_to_sale:daysToSale,region:o.regionName||o.oblast||'—'
