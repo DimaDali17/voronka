@@ -441,54 +441,60 @@ function aggByDay(rows){
   }));
 }
 
-/* ═══ DEBUG ═══ */
 function showDebug(cab){
   const d=DATA[cab];if(!d){alert('Нет данных — сначала загрузите');return;}
-  const salesIdx={};
-  for(const s of d.sales) if(s.odid) salesIdx[s.odid]=salesIdx[s.odid]||s;
 
-  const withOdidO=d.orders.filter(o=>o.odid).length;
-  const withOdidS=d.sales.filter(s=>s.odid).length;
-  const saleIds=new Set(d.sales.filter(s=>!s.saleID?.startsWith('R')&&s.odid).map(s=>s.odid));
-  const matched=d.orders.filter(o=>o.odid&&saleIds.has(o.odid)).length;
+  // Full field dump of first order and first sale
+  const o0=d.orders[0]||{};
+  const s0=d.sales[0]||{};
 
   let txt='';
-  txt+='╔══ СТАТИСТИКА ДАННЫХ ══╗\n';
-  txt+=`  Заказов загружено:         ${d.orders.length}\n`;
-  txt+=`  Продаж загружено:          ${d.sales.length}\n`;
-  txt+=`  Заказов с odid:            ${withOdidO} / ${d.orders.length} (${d.orders.length?Math.round(withOdidO/d.orders.length*100):0}%)\n`;
-  txt+=`  Продаж с odid:             ${withOdidS} / ${d.sales.length} (${d.sales.length?Math.round(withOdidS/d.sales.length*100):0}%)\n`;
-  txt+=`  Заказов нашли продажу:     ${matched}\n`;
-  txt+=`  Период заказов:            ${d.dateFrom} — ${d.dateTo}\n`;
-  txt+=`  Sales загружены с:         ${d.salesFrom||'?'}\n\n`;
+  txt+='╔══ ВСЕ ПОЛЯ ПЕРВОГО ЗАКАЗА (сырые) ══╗\n';
+  for(const [k,v] of Object.entries(o0)) txt+=`  ${k.padEnd(24)} = ${JSON.stringify(v)}\n`;
 
-  txt+='╔══ ПЕРВЫЕ 5 ПРОДАЖ (сырые из API) ══╗\n';
-  for(const s of d.sales.slice(0,5)){
-    txt+=`  date=${s.date}  saleID=${s.saleID}  odid=${s.odid||'нет'}  art=${s.supplierArticle}  sz=${s.techSize}  price=${s.finishedPrice}\n`;
+  txt+='\n╔══ ВСЕ ПОЛЯ ПЕРВОЙ ПРОДАЖИ (сырые) ══╗\n';
+  for(const [k,v] of Object.entries(s0)) txt+=`  ${k.padEnd(24)} = ${JSON.stringify(v)}\n`;
+
+  txt+='\n╔══ СТАТИСТИКА ══╗\n';
+  txt+=`  Заказов: ${d.orders.length},  Продаж: ${d.sales.length}\n`;
+  txt+=`  Период заказов: ${d.dateFrom} — ${d.dateTo}\n`;
+  txt+=`  Sales загружены с: ${d.salesFrom||'?'}\n`;
+
+  // Check gNumber presence
+  const ordWithG=d.orders.filter(o=>o.gNumber).length;
+  const salWithG=d.sales.filter(s=>s.gNumber).length;
+  txt+=`\n  Заказов с gNumber:  ${ordWithG} / ${d.orders.length}\n`;
+  txt+=`  Продаж с gNumber:   ${salWithG} / ${d.sales.length}\n`;
+
+  // Check other candidate keys
+  const keys=['odid','gNumber','srid','rid','nmId','barcode'];
+  txt+='\n╔══ НАЛИЧИЕ ВОЗМОЖНЫХ КЛЮЧЕЙ СВЯЗКИ ══╗\n';
+  for(const k of keys){
+    const oc=d.orders.filter(o=>o[k]!=null&&o[k]!==0&&o[k]!=='').length;
+    const sc=d.sales.filter(s=>s[k]!=null&&s[k]!==0&&s[k]!=='').length;
+    txt+=`  ${k.padEnd(10)}: заказов ${String(oc).padStart(5)} / ${d.orders.length},  продаж ${String(sc).padStart(5)} / ${d.sales.length}\n`;
   }
 
-  txt+='\n╔══ ПЕРВЫЕ 15 ЗАКАЗОВ + ИХ МАТЧ ══╗\n';
-  for(const o of d.orders.slice(0,15)){
-    const sale=o.odid?salesIdx[o.odid]:null;
-    const sameDay=sale&&(sale.date||'').slice(0,10)===(o.date||'').slice(0,10);
-    txt+=`\n  ЗАКАЗ:  date=${o.date}  art=${o.supplierArticle}  sz=${o.techSize}  odid=${o.odid||'нет'}  cancel=${o.isCancel}\n`;
-    if(sale){
-      txt+=`  ПРОДАЖА:date=${sale.date}  saleID=${sale.saleID}  odid=${sale.odid}  price=${sale.finishedPrice}`;
-      txt+=sameDay?' ⚠️ ТОТЖЕ ДЕНЬ':'';
-      txt+='\n';
-    } else {
-      txt+=`  ПРОДАЖА: нет совпадения по odid\n`;
-    }
+  // gNumber overlap check
+  if(ordWithG>0&&salWithG>0){
+    const saleGSet=new Set(d.sales.filter(s=>s.gNumber).map(s=>s.gNumber));
+    const matched=d.orders.filter(o=>o.gNumber&&saleGSet.has(o.gNumber)).length;
+    txt+=`\n  Заказов, у которых gNumber совпадает с продажей: ${matched}\n`;
   }
 
-  txt+='\n╔══ ГРУППИРОВКА: сколько продаж по дате ══╗\n';
-  const byDay={};
-  for(const s of d.sales) if(!s.saleID?.startsWith('R')){const dd=(s.date||'').slice(0,10);byDay[dd]=(byDay[dd]||0)+1;}
-  for(const dd of Object.keys(byDay).sort().slice(-14)) txt+=`  ${dd}: ${byDay[dd]} продаж\n`;
+  txt+='\n╔══ ПЕРВЫЕ 10 ЗАКАЗОВ (только ключевые поля) ══╗\n';
+  for(const o of d.orders.slice(0,10)){
+    txt+=`  date=${o.date}  art=${o.supplierArticle}  sz=${o.techSize}  gNumber=${o.gNumber||'нет'}  srid=${o.srid||'нет'}  rid=${o.rid||'нет'}\n`;
+  }
 
-  const w=window.open('','_blank','width=960,height=750,scrollbars=yes');
-  if(!w){alert('Браузер заблокировал окно. Разрешите pop-up для этой страницы.');return;}
-  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Debug WB кабинет ${cab}</title></head><body style="margin:0;background:#1a1a1a;color:#d4d0c8;font:13px/1.6 monospace;padding:20px"><pre style="white-space:pre-wrap">${txt}</pre></body></html>`);
+  txt+='\n╔══ ПЕРВЫЕ 10 ПРОДАЖ (только ключевые поля) ══╗\n';
+  for(const s of d.sales.slice(0,10)){
+    txt+=`  date=${s.date}  art=${s.supplierArticle}  sz=${s.techSize}  saleID=${s.saleID}  gNumber=${s.gNumber||'нет'}  srid=${s.srid||'нет'}  rid=${s.rid||'нет'}\n`;
+  }
+
+  const w=window.open('','_blank','width=980,height=800,scrollbars=yes');
+  if(!w){alert('Браузер заблокировал pop-up. Разрешите для этой страницы.');return;}
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Debug кабинет ${cab}</title></head><body style="margin:0;background:#1a1a1a;color:#d4d0c8;font:13px/1.6 monospace;padding:20px"><pre style="white-space:pre-wrap">${txt}</pre></body></html>`);
   w.document.close();
 }
 
