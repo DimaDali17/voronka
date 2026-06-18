@@ -227,12 +227,15 @@ tbody tr:hover{background:var(--bg3)}
 /* ═══ Config & State ═══ */
 let CFG = {key1:'', key2:'', proxy1:'https://wb-proxy.ooo6311ooo.workers.dev', proxy2:''};
 let DATA = {1:null, 2:null};
+let RETURNS_DATA = {1:null, 2:null};   // claims from Marketplace API
 let CUR_TAB = 1;
 
 // Per-cabinet UI state
 const SORT  = {1:{col:'date',dir:-1}, 2:{col:'date',dir:-1}};
 const SORT2 = {1:{col:'order_date',dir:-1}, 2:{col:'order_date',dir:-1}};
 const EXPAND= {1:false, 2:false};
+const EXPDAY= {1:false, 2:false};
+const EXPRET= {1:false, 2:false};
 const FILT  = {1:{art:'',status:'all'}, 2:{art:'',status:'all'}};
 
 // Analytics state per cabinet
@@ -347,6 +350,39 @@ async function wbGet(path,cab){
 }
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
+/* ═══ Marketplace API — Возвраты покупателей ═══
+   Базовый домен другой (marketplace-api вместо statistics-api).
+   Эндпоинт: GET /api/v1/returns — список заявок на возврат от покупателей,
+   со статусами (NEW, CONSIDERING, CONSIDERED и т.д.) и финансовыми полями.
+   Используем тот же ключ (если у него есть категория доступа «Маркетплейс»).
+═══ */
+const _lastMP={1:0,2:0};
+async function wbMarketplaceGet(path,cab){
+  const key  = cab===1?CFG.key1:CFG.key2;
+  const proxy= (cab===2&&CFG.proxy2)?CFG.proxy2:CFG.proxy1;
+  const url  = proxy+'?url='+encodeURIComponent('https://marketplace-api.wildberries.ru'+path);
+  const waits=[3000,8000,20000];
+  for(let i=0;i<=waits.length;i++){
+    const gap=Math.max(0,_lastMP[cab]+700-Date.now());
+    if(gap>0)await sleep(gap);
+    let r,txt='';
+    try{r=await fetch(url,{headers:{'X-WB-Token':key}});txt=await r.text();}
+    catch(e){if(i===waits.length)throw new Error('Сеть/прокси: '+e.message);await sleep(waits[i]);continue;}
+    _lastMP[cab]=Date.now();
+    if(r.status===401||r.status===403){
+      throw new Error('Нет доступа (401/403) — у ключа нет категории «Маркетплейс» в настройках API WB');
+    }
+    if(r.status===429||r.status>=500||!txt.trim()){
+      if(i===waits.length)throw new Error('WB Marketplace '+r.status+': не удалось получить данные после '+(waits.length+1)+' попыток');
+      const ra=parseInt(r.headers.get('retry-after')||'0',10);
+      await sleep(ra>0?ra*1000:waits[i]);continue;
+    }
+    if(!r.ok)throw new Error('WB Marketplace '+r.status+': '+txt.slice(0,200));
+    try{return JSON.parse(txt);}
+    catch(e){throw new Error('Некорректный JSON: '+txt.slice(0,120));}
+  }
+}
+
 /* ═══ Load ═══ */
 async function loadData(){
   const f=document.getElementById('date-from').value;
@@ -389,11 +425,38 @@ async function loadCab(cab,f,t){
     const sales =Array.isArray(saleRaw)?saleRaw:[];
     const filtered=orders.filter(o=>{const d=(o.date||'').slice(0,10);return d>=f&&d<=t;});
     DATA[cab]={orders:filtered,sales,dateFrom:f,dateTo:t,salesFrom:saleFromDate};
+
+    // Заявки на возврат — отдельный запрос, не блокирует основной рендер при ошибке
+    loadClaims(cab).catch(e=>{
+      RETURNS_DATA[cab]={error:e.message};
+      if(DATA[cab]) renderCab(cab);
+    });
+
     renderCab(cab);
   }catch(e){
     document.getElementById(appId).innerHTML=`<div class="err-box">⚠️ Кабинет ${cab===1?'Easyform':'EZFR'}: ${e.message}</div>`;
   }
 }
+
+/* ═══ Load Marketplace claims (заявки на возврат) ═══
+   GET /api/v1/returns — пагинация через next_page (passKey)
+   Документация WB может менять формат полей; парсим максимально терпимо.
+═══ */
+async function loadClaims(cab){
+  let all=[]; let next=null; let guard=0;
+  do{
+    const qs = next ? ('?next='+encodeURIComponent(next)) : '';
+    const resp = await wbMarketplaceGet('/api/v1/returns'+qs, cab);
+    const list = Array.isArray(resp) ? resp : (resp.returns||resp.data||resp.result||[]);
+    if(Array.isArray(list)) all=all.concat(list);
+    next = resp && resp.next_page ? resp.next_page : null;
+    guard++;
+  }while(next && guard<20);
+
+  RETURNS_DATA[cab] = { claims: all, loadedAt: Date.now() };
+  if(DATA[cab]) renderCab(cab);
+}
+
 
 /* ═══ Funnel matching ═══
    Ключ: srid (Sale Request ID) — совпадает точно у 100% выкупленных заказов.
@@ -596,6 +659,24 @@ function showDebug(cab){
       txt+='\n';
     } else {
       txt+=`  ПРОДАЖА: не найдена\n`;
+    }
+  }
+
+  txt+='\n╔══ ЗАЯВКИ НА ВОЗВРАТ (Marketplace API, сырые) ══╗\n';
+  const rd=RETURNS_DATA[cab];
+  if(!rd){
+    txt+='  Не загружены (попробуйте обновить через ↻ Загрузить)\n';
+  } else if(rd.error){
+    txt+=`  Ошибка: ${rd.error}\n`;
+  } else {
+    txt+=`  Всего заявок: ${(rd.claims||[]).length}\n\n`;
+    if(rd.claims&&rd.claims[0]){
+      txt+='  Все поля первой заявки:\n';
+      for(const [k,v] of Object.entries(rd.claims[0])){
+        txt+=`    ${k.padEnd(24)} = ${JSON.stringify(v)}\n`;
+      }
+    } else {
+      txt+='  Список пуст\n';
     }
   }
 
@@ -1056,6 +1137,7 @@ function renderCab(cab){
   html+=buildDayTable(days,cab);
   html+=buildDetailTable(rows,cab);
   html+=buildReturnsTable(rows,cab);
+  html+=buildClaimsTable(cab);
 
   document.getElementById('app'+cab).innerHTML=html;
 }
@@ -1071,7 +1153,10 @@ function buildReturnsTable(allRows,cab){
   const sorted=[...rets].sort((a,b)=>(a.sale_date||'')<(b.sale_date||'')?1:-1);
   const sumLoss=rets.reduce((s,r)=>s+(r.sale_price||0),0);
 
-  const rowsHtml=sorted.map(r=>{
+  const LIMIT=10;
+  const show=EXPRET[cab]?sorted:sorted.slice(0,LIMIT);
+
+  const rowsHtml=show.map(r=>{
     const dc=r.days_to_sale!=null
       ?(r.days_to_sale<=3?'<span class="days-chip" style="color:var(--green)">'+r.days_to_sale+' дн</span>'
         :r.days_to_sale<=7?'<span class="days-chip" style="color:var(--amber)">'+r.days_to_sale+' дн</span>'
@@ -1090,6 +1175,9 @@ function buildReturnsTable(allRows,cab){
     </tr>`;
   }).join('');
 
+  const expBtn=sorted.length>LIMIT
+    ?`<tr class="er"><td colspan="9"><button class="eb" onclick="toggleExpRet(${cab})">${EXPRET[cab]?'▲ Свернуть':'▼ Показать все '+sorted.length+' заявок'}</button></td></tr>`:'';
+
   return `<div class="sec">
     <div class="sh"><span class="st">↩ Брак / Возвраты</span><span class="sm2">${rets.length} заявок · потери ${fmtRub(sumLoss)}</span></div>
     <div class="sw"><table>
@@ -1097,7 +1185,111 @@ function buildReturnsTable(allRows,cab){
         <th>Дата заказа</th><th>Артикул</th><th>Размер</th><th>Товар</th>
         <th>Дата возврата</th><th>Сумма</th><th>Дней до факта</th><th>Склад</th><th>SRID</th>
       </tr></thead>
-      <tbody>${rowsHtml}</tbody>
+      <tbody>${rowsHtml}${expBtn}</tbody>
+    </table></div>
+  </div>`;
+}
+function toggleExpRet(cab){EXPRET[cab]=!EXPRET[cab];if(DATA[cab])renderCab(cab);}
+
+/* ═══ Claims table (Заявки на возврат, Marketplace API) ═══
+   Поля у WB могут называться по-разному в зависимости от версии API,
+   поэтому читаем терпимо — пробуем несколько вариантов имени поля.
+═══ */
+const EXPCLM={1:false,2:false};
+function toggleExpClm(cab){EXPCLM[cab]=!EXPCLM[cab];if(DATA[cab])renderCab(cab);}
+
+const CLAIM_STATUS_MAP={
+  'NEW':{label:'Новая',cls:'b-new'},
+  'WB_VERIFICATION':{label:'Проверка WB',cls:'b-wait'},
+  'SELLER_VERIFICATION':{label:'Проверка продавца',cls:'b-wait'},
+  'CONSIDERING':{label:'Рассматривается',cls:'b-wait'},
+  'CONSIDERED':{label:'Рассмотрена',cls:'b-wait'},
+  'ON_THE_WAY':{label:'В пути',cls:'b-wait'},
+  'REJECTED':{label:'Отклонена',cls:'b-cancel'},
+  'REJECTED_BY_USER':{label:'Отменена покупателем',cls:'b-cancel'},
+  'APPROVED':{label:'Одобрена',cls:'b-sold'},
+  'CLOSED':{label:'Закрыта',cls:'b-cancel'},
+};
+function claimStatusBadge(raw){
+  const m=CLAIM_STATUS_MAP[raw];
+  if(m) return `<span class="badge ${m.cls}">${m.label}</span>`;
+  return `<span class="badge b-wait">${raw||'—'}</span>`;
+}
+
+function buildClaimsTable(cab){
+  const rd=RETURNS_DATA[cab];
+
+  if(!rd){
+    return `<div class="sec">
+      <div class="sh"><span class="st">📮 Заявки на возврат (Маркетплейс)</span></div>
+      <div class="sw"><div class="lm"><span class="sp">↻</span> Загружаем заявки на возврат...</div></div>
+    </div>`;
+  }
+  if(rd.error){
+    return `<div class="sec">
+      <div class="sh"><span class="st">📮 Заявки на возврат (Маркетплейс)</span></div>
+      <div class="err-box">⚠️ ${rd.error}</div>
+    </div>`;
+  }
+
+  const claims=rd.claims||[];
+  if(!claims.length){
+    return `<div class="sec">
+      <div class="sh"><span class="st">📮 Заявки на возврат (Маркетплейс)</span><span class="sm2">0 заявок</span></div>
+      <div class="sw"><div class="em">Заявок на возврат не найдено</div></div>
+    </div>`;
+  }
+
+  // Терпимый парсинг полей (схема WB может отличаться)
+  const get=(o,...keys)=>{for(const k of keys){if(o&&o[k]!=null) return o[k];}return null;};
+
+  const parsed=claims.map(c=>{
+    const id        = get(c,'id','claimId','returnId','number');
+    const createdAt = get(c,'createdAt','dt','date','createDate');
+    const updatedAt = get(c,'updatedAt','statusUpdateDate','lastChangeDate');
+    const status     = get(c,'status','claimStatus','returnStatus');
+    const art        = get(c,'article','supplierArticle','vendorCode')||'—';
+    const name       = get(c,'subjectName','name','productName')||'—';
+    const price      = get(c,'price','orderPrice','amount')||0;
+    const refund     = get(c,'refundAmount','payedAmount','toRefund','userFunds')||0;
+    const reason     = get(c,'comment','userComment','reason')||'—';
+    const orderId    = get(c,'orderId','srid','gNumber');
+    return{id,createdAt,updatedAt,status,art,name,price,refund,reason,orderId,raw:c};
+  });
+
+  const sorted=[...parsed].sort((a,b)=>(a.createdAt||'')<(b.createdAt||'')?1:-1);
+  const sumRefund=parsed.reduce((s,c)=>s+(parseFloat(c.refund)||0),0);
+  const approved=parsed.filter(c=>c.status==='APPROVED'||c.status==='CLOSED').length;
+  const pending=parsed.filter(c=>!['APPROVED','CLOSED','REJECTED','REJECTED_BY_USER'].includes(c.status)).length;
+
+  const LIMIT=10;
+  const show=EXPCLM[cab]?sorted:sorted.slice(0,LIMIT);
+
+  const rowsHtml=show.map(c=>{
+    const dateFmt=d=>d?ruDate((''+d).slice(0,10)):'—';
+    return `<tr>
+      <td style="font-family:monospace;font-size:11px">${c.id||'—'}</td>
+      <td>${dateFmt(c.createdAt)}</td>
+      <td><span class="art">${c.art}</span></td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${c.name}">${c.name}</td>
+      <td>${claimStatusBadge(c.status)}</td>
+      <td style="font-weight:700;color:var(--red)">${c.refund?fmtRub(c.refund):'—'}</td>
+      <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--ink3)" title="${c.reason}">${c.reason}</td>
+      <td>${c.orderId?`<span class="art" style="font-size:9px;cursor:pointer;text-decoration:underline dotted" onclick="searchById('${(''+c.orderId).replace(/'/g,"\\'")}')" title="Найти заказ">${(''+c.orderId).slice(0,16)}…</span>`:'—'}</td>
+    </tr>`;
+  }).join('');
+
+  const expBtn=sorted.length>LIMIT
+    ?`<tr class="er"><td colspan="8"><button class="eb" onclick="toggleExpClm(${cab})">${EXPCLM[cab]?'▲ Свернуть':'▼ Показать все '+sorted.length+' заявок'}</button></td></tr>`:'';
+
+  return `<div class="sec">
+    <div class="sh"><span class="st">📮 Заявки на возврат (Маркетплейс)</span><span class="sm2">${claims.length} заявок · к возврату ${fmtRub(sumRefund)} · в работе: ${pending} · одобрено: ${approved}</span></div>
+    <div class="sw"><table>
+      <thead><tr>
+        <th>ID заявки</th><th>Дата</th><th>Артикул</th><th>Товар</th>
+        <th>Статус</th><th>К возврату</th><th>Причина</th><th>Заказ</th>
+      </tr></thead>
+      <tbody>${rowsHtml}${expBtn}</tbody>
     </table></div>
   </div>`;
 }
@@ -1112,7 +1304,10 @@ function buildDayTable(days,cab){
   const ar=k=>SORT[cab].col===k?(SORT[cab].dir>0?' ↑':' ↓'):' ↕';
   const sc=k=>SORT[cab].col===k?' sa':'';
 
-  const rows=sorted.map(d=>{
+  const LIMIT=10;
+  const show=EXPDAY[cab]?sorted:sorted.slice(0,LIMIT);
+
+  const rows=show.map(d=>{
     const cc=d.conv>=60?'cp-g':d.conv>=40?'cp-a':'cp-r';
     const pw=d.total>0?Math.round((d.sold+d.returned)/d.total*100):0;
     const barCls=d.conv>=60?'pb-g':d.conv>=40?'pb-a':'pb-r';
@@ -1129,6 +1324,9 @@ function buildDayTable(days,cab){
     </tr>`;
   }).join('');
 
+  const expBtn=sorted.length>LIMIT
+    ?`<tr class="er"><td colspan="9"><button class="eb" onclick="toggleExpDay(${cab})">${EXPDAY[cab]?'▲ Свернуть':'▼ Показать все '+sorted.length+' дней'}</button></td></tr>`:'';
+
   return`<div class="sec">
     <div class="sh"><span class="st">Сводка по дням</span><span class="sm2">${days.length} дней</span></div>
     <div class="sw"><table>
@@ -1143,10 +1341,11 @@ function buildDayTable(days,cab){
         <th onclick="srtDay(${cab},'revenue')" class="${sc('revenue')}">Выручка${ar('revenue')}</th>
         <th onclick="srtDay(${cab},'avg_days')" class="${sc('avg_days')}">Ср. дней до выкупа${ar('avg_days')}</th>
       </tr></thead>
-      <tbody>${rows||'<tr><td colspan="9" class="em">Нет данных</td></tr>'}</tbody>
+      <tbody>${rows||'<tr><td colspan="9" class="em">Нет данных</td></tr>'}${expBtn}</tbody>
     </table></div>
   </div>`;
 }
+function toggleExpDay(cab){EXPDAY[cab]=!EXPDAY[cab];if(DATA[cab])renderCab(cab);}
 function srtDay(cab,col){
   SORT[cab].dir=SORT[cab].col===col?SORT[cab].dir*-1:-1;
   SORT[cab].col=col;
@@ -1170,7 +1369,7 @@ function buildDetailTable(allRows,cab){
     return(va<vb?-1:va>vb?1:0)*dir;
   });
 
-  const LIMIT=50;
+  const LIMIT=10;
   const show=EXPAND[cab]?sorted:sorted.slice(0,LIMIT);
   const ar=k=>SORT2[cab].col===k?(SORT2[cab].dir>0?' ↑':' ↓'):' ↕';
   const sc=k=>SORT2[cab].col===k?' sa':'';
