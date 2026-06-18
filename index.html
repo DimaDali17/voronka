@@ -215,7 +215,7 @@ tbody tr:hover{background:var(--bg3)}
 
 <!-- Order detail modal -->
 <div class="sov" id="orderModal">
-  <div class="sc" style="width:560px" id="orderModalBody"></div>
+  <div class="sc" style="width:640px;max-height:85vh;overflow-y:auto" id="orderModalBody"></div>
 </div>
 
 <!-- Views per cabinet -->
@@ -813,6 +813,82 @@ function searchById(id){
   doIdSearch();
 }
 
+/* ═══ Claim modal — показывает заявку на возврат целиком ═══
+   В отличие от showOrderModal (которая ищет по srid в Statistics API),
+   эта функция просто берёт заявку напрямую из RETURNS_DATA по её id
+   и выводит ВСЕ поля без потерь — чтобы вопрос "почему сумма заказа и
+   сумма возврата отличаются" и "какое решение принято" были видны
+   как есть, даже если мы не знаем точного названия каждого поля.
+═══ */
+function showClaimModal(cab, claimId){
+  const rd=RETURNS_DATA[cab];
+  const body=document.getElementById('orderModalBody');
+  if(!rd || !rd.claims){
+    body.innerHTML=`<div class="stitle">Заявка не найдена</div>
+      <div class="err-box">⚠️ Данные по заявкам на возврат ещё не загружены.</div>
+      <button class="sbtn" onclick="closeOrderModal()">Закрыть</button>`;
+    document.getElementById('orderModal').classList.add('show');
+    return;
+  }
+  const c=rd.claims.find(x=>x.id===claimId);
+  if(!c){
+    body.innerHTML=`<div class="stitle">Заявка не найдена</div>
+      <div class="err-box">⚠️ ID: ${claimId} — не найдена среди загруженных заявок (вне окна 14 дней).</div>
+      <button class="sbtn" onclick="closeOrderModal()">Закрыть</button>`;
+    document.getElementById('orderModal').classList.add('show');
+    return;
+  }
+
+  const dateFmt=d=>d?ruDate((''+d).slice(0,10))+' · '+new Date(d).toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'}):'—';
+  const typeLabel=CLAIM_TYPE_MAP[c.claim_type]||('Тип '+(c.claim_type??'—'));
+
+  // Известные нам поля — показываем как структурированную карточку.
+  // Поле, отвечающее за решение продавца (вернул деньги / принял на склад /
+  // отправил в перепродажу), WB может называть по-разному между версиями API —
+  // ищем терпимо среди вероятных вариантов и помечаем явно, если не нашли.
+  const get=(...keys)=>{for(const k of keys){if(c[k]!=null) return c[k];}return null;};
+  const decision = get('seller_status','resolution','disposal','decision','actual_disposal');
+  const moneyBack = get('is_money_returned','money_returned','refund_done','is_refunded');
+  const refundSum = get('refund_amount','user_funds','order_price','price');
+
+  let known=`
+    <div class="ssec">Основное</div>
+    <table style="width:100%;font-size:12px;margin-bottom:14px">
+      <tr><td style="padding:4px 0;color:var(--ink3);width:160px">ID заявки</td><td style="font-family:monospace;font-size:11px;word-break:break-all">${c.id}</td></tr>
+      <tr><td style="padding:4px 0;color:var(--ink3)">Дата создания</td><td style="font-weight:700">${dateFmt(c.create_dt||c.dt)}</td></tr>
+      <tr><td style="padding:4px 0;color:var(--ink3)">nmId</td><td>${c.nm_id||'—'}</td></tr>
+      <tr><td style="padding:4px 0;color:var(--ink3)">Тип заявки</td><td>${typeLabel}</td></tr>
+      <tr><td style="padding:4px 0;color:var(--ink3)">Статус</td><td>${claimStatusBadge(c.status)}</td></tr>
+      ${c.status_ex!=null?`<tr><td style="padding:4px 0;color:var(--ink3)">Статус (расширенный)</td><td>Код ${c.status_ex}</td></tr>`:''}
+      ${c.delivery_dt?`<tr><td style="padding:4px 0;color:var(--ink3)">Дата доставки/решения</td><td>${dateFmt(c.delivery_dt)}</td></tr>`:''}
+    </table>
+
+    <div class="ssec">Комментарии</div>
+    <table style="width:100%;font-size:12px;margin-bottom:14px">
+      <tr><td style="padding:4px 0;color:var(--ink3);width:160px;vertical-align:top">Покупатель написал</td><td>${c.user_comment||'—'}</td></tr>
+      <tr><td style="padding:4px 0;color:var(--ink3);vertical-align:top">Ответ WB / продавца</td><td>${c.wb_comment||'—'}</td></tr>
+    </table>`;
+
+  if(decision!=null || moneyBack!=null || refundSum!=null){
+    known+=`
+    <div class="ssec">Решение по заявке (поля, которые удалось распознать)</div>
+    <table style="width:100%;font-size:12px;margin-bottom:14px">
+      ${decision!=null?`<tr><td style="padding:4px 0;color:var(--ink3);width:160px">Решение</td><td style="font-weight:700">${decision}</td></tr>`:''}
+      ${moneyBack!=null?`<tr><td style="padding:4px 0;color:var(--ink3)">Деньги возвращены</td><td style="font-weight:700">${moneyBack?'Да':'Нет'}</td></tr>`:''}
+      ${refundSum!=null?`<tr><td style="padding:4px 0;color:var(--ink3)">Сумма</td><td style="font-weight:700">${fmtRub(refundSum)}</td></tr>`:''}
+    </table>`;
+  }
+
+  known+=`
+    <div class="ssec">Все поля из API (полный сырой ответ)</div>
+    <div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:10px;font-family:monospace;max-height:240px;overflow-y:auto;white-space:pre-wrap;word-break:break-all">${JSON.stringify(c,null,2).replace(/</g,'&lt;')}</div>
+    <div style="font-size:10px;color:var(--ink3);margin-top:8px">Названия полей про сумму выкупа vs сумму возврата и про итоговое решение продавца (вернул деньги / принял на склад / отправил в перепродажу) WB может передавать под другими именами — смотрите полный JSON выше и сообщите мне точные ключи, я добавлю их в структурированный блок.</div>
+    <button class="sbtn" onclick="closeOrderModal()">Закрыть</button>`;
+
+  body.innerHTML=`<div class="stitle">Заявка на возврат</div><div class="ssub" style="margin-bottom:14px">Кабинет: ${cab===1?'Easyform':'EZFR'}</div>${known}`;
+  document.getElementById('orderModal').classList.add('show');
+}
+
 /* ═══ ANALYTICS ═══ */
 
 // Get all unique articles from loaded data for a cabinet
@@ -1258,7 +1334,7 @@ function buildClaimsTable(cab){
     const dateFmt=d=>d?ruDate((''+d).slice(0,10)):'—';
     const typeLabel=CLAIM_TYPE_MAP[c.claim_type]||('Тип '+(c.claim_type??'—'));
     return `<tr>
-      <td><span class="art" style="font-size:9px;cursor:pointer;text-decoration:underline dotted" onclick="searchById('${(''+c.id).replace(/'/g,"\\'")}')" title="${c.id}">${(c.id||'').slice(0,8)}…</span></td>
+      <td><span class="art" style="font-size:9px;cursor:pointer;text-decoration:underline dotted" onclick="showClaimModal(${cab},'${(''+c.id).replace(/'/g,"\\'")}')" title="${c.id}">${(c.id||'').slice(0,8)}…</span></td>
       <td>${dateFmt(c.create_dt||c.delivery_dt)}</td>
       <td style="font-size:11px">${c.nm_id||'—'}</td>
       <td>${typeLabel}</td>
