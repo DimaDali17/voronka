@@ -205,9 +205,23 @@ tbody tr:hover{background:var(--bg3)}
   <span class="upd" id="range-info"></span>
 </div>
 
+<!-- ID / SRID search -->
+<div class="ctrl" style="background:var(--bg3);border-bottom:1px solid var(--border2)">
+  <label>🔎 Поиск заявки по ID / SRID:</label>
+  <input type="text" class="dq" id="id-search" placeholder="например: d829d813-b701-410d-b44a-7fff1061d0c4" style="width:340px" onkeydown="if(event.key==='Enter')doIdSearch()">
+  <button class="btn btn-primary" onclick="doIdSearch()">Найти</button>
+  <span class="upd" id="id-search-hint">Ищет по всем загруженным заказам и продажам обоих кабинетов, вне зависимости от периода</span>
+</div>
+
+<!-- Order detail modal -->
+<div class="sov" id="orderModal">
+  <div class="sc" style="width:560px" id="orderModalBody"></div>
+</div>
+
 <!-- Views per cabinet -->
 <div class="main" id="app1"><div class="lm">⚙ Введите API-ключи и нажмите «Загрузить»</div></div>
 <div class="main" id="app2" style="display:none"><div class="lm">⚙ Введите API-ключи и нажмите «Загрузить»</div></div>
+
 
 <script>
 /* ═══ Config & State ═══ */
@@ -591,6 +605,136 @@ function showDebug(cab){
   w.document.close();
 }
 
+/* ═══ ID / SRID SEARCH ═══
+   Ищет по всем загруженным заказам и продажам обоих кабинетов (вне зависимости
+   от выбранного периода дат), сопоставляет по точному srid, suffix без префикса,
+   или подстроке (на случай если ввели только часть hash).
+═══ */
+function sridSuffixGlobal(s){ if(!s) return ''; const i=s.indexOf('.'); return i>=0?s.slice(i+1):s; }
+
+function doIdSearch(){
+  const q=(document.getElementById('id-search').value||'').trim();
+  if(!q){alert('Введите ID или srid для поиска');return;}
+  const qLower=q.toLowerCase();
+
+  let foundOrder=null, foundCab=null, foundSale=null, foundReturn=null;
+
+  for(const cab of [1,2]){
+    const d=DATA[cab]; if(!d) continue;
+
+    // Index sales for this cabinet
+    const salesBySrid={}; const retSridSet=new Set();
+    for(const s of d.sales){
+      if(!s.srid) continue;
+      if(s.saleID&&s.saleID.startsWith('R')){ retSridSet.add(s.srid); retSridSet.add(sridSuffixGlobal(s.srid)); continue; }
+      salesBySrid[s.srid]=s;
+      salesBySrid[sridSuffixGlobal(s.srid)]=s;
+    }
+
+    // Try exact / suffix match in orders
+    let order=d.orders.find(o=>o.srid===q || sridSuffixGlobal(o.srid)===q);
+    // Fallback: substring match (partial id typed)
+    if(!order) order=d.orders.find(o=>o.srid&&o.srid.toLowerCase().includes(qLower));
+
+    if(order){
+      foundOrder=order; foundCab=cab;
+      foundSale=salesBySrid[order.srid]||salesBySrid[sridSuffixGlobal(order.srid)]||null;
+      const isRet=(order.srid&&retSridSet.has(order.srid))||retSridSet.has(sridSuffixGlobal(order.srid));
+      if(isRet) foundReturn=true;
+      break;
+    }
+
+    // Also search directly in sales (in case user pasted a sale's srid, not order's)
+    let sale=d.sales.find(s=>s.srid===q || sridSuffixGlobal(s.srid)===q);
+    if(!sale) sale=d.sales.find(s=>s.srid&&s.srid.toLowerCase().includes(qLower));
+    if(sale){
+      foundSale=sale; foundCab=cab;
+      // try to find matching order too
+      foundOrder=d.orders.find(o=>o.srid===sale.srid || sridSuffixGlobal(o.srid)===sridSuffixGlobal(sale.srid))||null;
+      foundReturn=sale.saleID&&sale.saleID.startsWith('R');
+      break;
+    }
+  }
+
+  showOrderModal(q, foundOrder, foundSale, foundCab, foundReturn);
+}
+
+function showOrderModal(query, order, sale, cab, isReturn){
+  const body=document.getElementById('orderModalBody');
+  if(!order && !sale){
+    body.innerHTML=`
+      <div class="stitle">Заявка не найдена</div>
+      <div class="ssub" style="margin-bottom:16px">ID: ${query}</div>
+      <div class="err-box">⚠️ Ничего не найдено по этому ID ни в одном из загруженных кабинетов.
+      Проверьте: данные за нужный период загружены (кнопка ↻ Загрузить), и ID введён без опечаток.</div>
+      <button class="sbtn" onclick="closeOrderModal()">Закрыть</button>`;
+  } else {
+    const cabName = cab===1?'Easyform':'EZFR';
+    let statusBadge, statusNote;
+    if(order&&order.isCancel){
+      statusBadge='<span class="badge b-cancel">✗ Отменён</span>';
+      statusNote='Заказ был отменён покупателем или системой WB.';
+    } else if(sale&&isReturn){
+      statusBadge='<span class="badge b-cancel">↩ Возврат / Брак</span>';
+      statusNote='Товар был выкуплен, но затем возвращён покупателем.';
+    } else if(sale){
+      statusBadge='<span class="badge b-sold">✓ Выкуплен</span>';
+      statusNote='Заказ успешно выкуплен покупателем.';
+    } else {
+      const daysSince=order?(Date.now()-new Date(order.date))/864e5:0;
+      if(daysSince>21){
+        statusBadge='<span class="badge b-cancel">✗ Не выкуплен (срок истёк)</span>';
+        statusNote='Прошло более 21 дня без выкупа — скорее всего отказ.';
+      } else {
+        statusBadge='<span class="badge b-wait">⏳ В ожидании</span>';
+        statusNote='Заказ ещё в пути или ожидает на ПВЗ.';
+      }
+    }
+
+    const o=order||{};
+    const s=sale||{};
+    const days = order&&sale ? Math.round((new Date(sale.date)-new Date(order.date))/864e5) : null;
+
+    body.innerHTML=`
+      <div class="stitle">Карточка заявки</div>
+      <div class="ssub" style="margin-bottom:14px">Кабинет: ${cabName}</div>
+      <div style="margin-bottom:16px">${statusBadge}</div>
+      <div style="font-size:12px;color:var(--ink2);margin-bottom:18px">${statusNote}</div>
+
+      <div class="ssec">Заказ</div>
+      <table style="width:100%;font-size:12px;margin-bottom:14px">
+        <tr><td style="padding:4px 0;color:var(--ink3);width:140px">Дата заказа</td><td style="font-weight:700">${o.date?ruDate(o.date.slice(0,10))+' · '+new Date(o.date).toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'}):'—'}</td></tr>
+        <tr><td style="padding:4px 0;color:var(--ink3)">Артикул</td><td><span class="art">${o.supplierArticle||'—'}</span></td></tr>
+        <tr><td style="padding:4px 0;color:var(--ink3)">Размер</td><td>${o.techSize||'—'}</td></tr>
+        <tr><td style="padding:4px 0;color:var(--ink3)">Товар</td><td>${o.subject||o.category||'—'}</td></tr>
+        <tr><td style="padding:4px 0;color:var(--ink3)">Цена заказа</td><td style="font-weight:700">${o.finishedPrice?fmtRub(o.finishedPrice):'—'}</td></tr>
+        <tr><td style="padding:4px 0;color:var(--ink3)">Склад</td><td>${o.warehouseName||'—'}</td></tr>
+        <tr><td style="padding:4px 0;color:var(--ink3)">Регион</td><td>${o.regionName||'—'}</td></tr>
+        <tr><td style="padding:4px 0;color:var(--ink3)">SRID</td><td style="font-size:10px;font-family:monospace;word-break:break-all">${o.srid||'—'}</td></tr>
+        <tr><td style="padding:4px 0;color:var(--ink3)">gNumber</td><td style="font-size:10px;font-family:monospace">${o.gNumber||'—'}</td></tr>
+      </table>
+
+      ${sale?`
+      <div class="ssec">${isReturn?'Возврат':'Выкуп'}</div>
+      <table style="width:100%;font-size:12px;margin-bottom:14px">
+        <tr><td style="padding:4px 0;color:var(--ink3);width:140px">Дата ${isReturn?'возврата':'выкупа'}</td><td style="font-weight:700">${s.date?ruDate(s.date.slice(0,10))+' · '+new Date(s.date).toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'}):'—'}</td></tr>
+        <tr><td style="padding:4px 0;color:var(--ink3)">Сумма</td><td style="font-weight:700;color:${isReturn?'var(--red)':'var(--green)'}">${s.finishedPrice?fmtRub(s.finishedPrice):'—'}</td></tr>
+        <tr><td style="padding:4px 0;color:var(--ink3)">saleID</td><td style="font-family:monospace;font-size:11px">${s.saleID||'—'}</td></tr>
+        ${days!=null?`<tr><td style="padding:4px 0;color:var(--ink3)">Дней от заказа</td><td style="font-weight:700">${days} дн</td></tr>`:''}
+      </table>`:''}
+
+      <button class="sbtn" onclick="closeOrderModal()">Закрыть</button>`;
+  }
+  document.getElementById('orderModal').classList.add('show');
+}
+function closeOrderModal(){ document.getElementById('orderModal').classList.remove('show'); }
+
+// Used by returns table to jump straight to a card
+function searchById(id){
+  document.getElementById('id-search').value=id;
+  doIdSearch();
+}
+
 /* ═══ ANALYTICS ═══ */
 
 // Get all unique articles from loaded data for a cabinet
@@ -660,16 +804,30 @@ function aggBuckets(rows, mode){
 // Draw SVG bar chart: orders (grey) + sold (green) bars, conv% line overlay
 function drawAnalyticsChart(buckets, mode){
   if(!buckets.length) return '<div class="em">Нет данных для графика</div>';
-  const W=720,H=180,PL=44,PR=14,PT=16,PB=36;
+  const W=720,H=200,PL=44,PR=36,PT=20,PB=44;
   const cW=W-PL-PR, cH=H-PT-PB;
   const N=buckets.length;
   const maxOrders=Math.max(...buckets.map(b=>b.orders),1);
-  const maxConv=100;
   const gW=cW/N;
-  const bW=Math.max(4,Math.floor(gW*0.32));
-  const gap=Math.max(1,Math.floor(gW*0.05));
+  const bW=Math.max(3,Math.min(18,Math.floor(gW*0.34)));
+  const gap=Math.max(1,Math.floor(gW*0.04));
 
-  let bars='', convPts=[], xLabels='';
+  let bars='', convPts=[], xLabels='', valLabels='';
+
+  // How often to show x-label — aim for ~8-10 labels max
+  const maxLabels=10;
+  const labelStep=Math.max(1,Math.ceil(N/maxLabels));
+
+  // Find local maxima for conv% value labels (show on every Nth point or peaks)
+  const showValAt=new Set();
+  // Always show first and last
+  if(N>0){showValAt.add(0);showValAt.add(N-1);}
+  // Show every labelStep-th
+  for(let i=0;i<N;i+=labelStep) showValAt.add(i);
+  // Show local peaks (conv higher than both neighbours)
+  for(let i=1;i<N-1;i++){
+    if(buckets[i].conv>buckets[i-1].conv&&buckets[i].conv>buckets[i+1].conv) showValAt.add(i);
+  }
 
   for(let i=0;i<N;i++){
     const b=buckets[i];
@@ -679,54 +837,60 @@ function drawAnalyticsChart(buckets, mode){
     // Orders bar (grey)
     const ohPx=b.orders>0?(b.orders/maxOrders)*cH:0;
     const ox=cx-bW-gap/2;
-    bars+=`<rect x="${ox}" y="${PT+cH-ohPx}" width="${bW}" height="${ohPx}" rx="2" fill="#D5D0C8" opacity=".7"/>`;
+    bars+=`<rect x="${ox.toFixed(1)}" y="${(PT+cH-ohPx).toFixed(1)}" width="${bW}" height="${ohPx.toFixed(1)}" rx="2" fill="#D5D0C8" opacity=".65"/>`;
 
-    // Sold bar (green/amber/red by conv)
+    // Sold bar
     const soldH=b.orders>0?(b.sold/maxOrders)*cH:0;
     const fill=b.conv>=60?'var(--green)':b.conv>=40?'var(--amber)':'var(--red)';
     const sx=cx+gap/2;
-    bars+=`<rect x="${sx}" y="${PT+cH-soldH}" width="${bW}" height="${soldH}" rx="2" fill="${fill}" opacity=".85"/>`;
+    bars+=`<rect x="${sx.toFixed(1)}" y="${(PT+cH-soldH).toFixed(1)}" width="${bW}" height="${soldH.toFixed(1)}" rx="2" fill="${fill}" opacity=".85"/>`;
 
     // Conv% line point
-    const ly=PT+cH-(b.conv/maxConv)*cH;
-    convPts.push(`${cx},${ly}`);
+    const ly=PT+cH-(b.conv/100)*cH;
+    convPts.push([cx, ly, b]);
 
-    // X labels — show every Nth to avoid crowding
-    const step=N<=7?1:N<=14?2:N<=31?3:N<=52?4:2;
-    if(i%step===0||i===N-1){
-      const lbl=mode==='day'?b.label:mode==='week'?b.label.split('–')[0].trim():b.label;
-      xLabels+=`<text x="${cx}" y="${H-6}" text-anchor="middle" font-size="8" fill="var(--ink3)" font-family="inherit">${lbl}</text>`;
+    // X labels — only every labelStep, or first/last
+    if(i%labelStep===0||i===N-1){
+      let lbl;
+      if(mode==='day') lbl=ruDateShort(b.key);
+      else if(mode==='week') lbl=ruDateShort(b.key);
+      else lbl=b.label; // month: short name
+      xLabels+=`<text x="${cx.toFixed(1)}" y="${H-4}" text-anchor="middle" font-size="8" fill="var(--ink3)" font-family="inherit">${lbl}</text>`;
+    }
+
+    // Conv% value labels on selected points
+    if(showValAt.has(i)){
+      const labelY=(ly-7).toFixed(1);
+      valLabels+=`<text x="${cx.toFixed(1)}" y="${labelY}" text-anchor="middle" font-size="8" fill="var(--blue)" font-family="inherit" font-weight="600">${b.conv}%</text>`;
     }
   }
 
-  // Conv% polyline
-  const convLine = convPts.length>1
-    ?`<polyline points="${convPts.join(' ')}" fill="none" stroke="var(--blue)" stroke-width="1.5" stroke-linejoin="round" opacity=".8"/>`
+  // Conv% polyline — thin line, small dots
+  const ptStr=convPts.map(([x,y])=>`${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+  const convLine=convPts.length>1
+    ?`<polyline points="${ptStr}" fill="none" stroke="var(--blue)" stroke-width="1" stroke-linejoin="round" opacity=".75"/>`
     :'';
-  // Conv% dots
-  const convDots = convPts.map((pt,i)=>{
-    const [cx,cy]=pt.split(',');
-    const b=buckets[i];
-    return `<circle cx="${cx}" cy="${cy}" r="3" fill="var(--blue)" opacity=".9">
-      <title>${b.label}: ${b.conv}% выкуп (${b.sold}/${b.orders})</title></circle>`;
-  }).join('');
+  const convDots=convPts.map(([cx,cy,b])=>
+    `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="2" fill="var(--blue)" opacity=".85">
+      <title>${b.label}: ${b.conv}% (${b.sold}/${b.orders})</title></circle>`
+  ).join('');
 
-  // Y axis labels (left = orders count)
+  // Y axis left (orders)
   let yLeft='';
-  for(const v of [0, Math.round(maxOrders/2), maxOrders]){
+  for(const v of [0,Math.round(maxOrders/2),maxOrders]){
     const y=PT+cH-(v/maxOrders)*cH;
-    yLeft+=`<text x="${PL-5}" y="${y+3}" text-anchor="end" font-size="7" fill="var(--ink3)" font-family="inherit">${v}</text>`;
-    yLeft+=`<line x1="${PL}" x2="${W-PR}" y1="${y}" y2="${y}" stroke="var(--border)" stroke-width="0.5"/>`;
+    yLeft+=`<text x="${PL-5}" y="${(y+3).toFixed(1)}" text-anchor="end" font-size="7" fill="var(--ink3)" font-family="inherit">${v}</text>`;
+    yLeft+=`<line x1="${PL}" x2="${W-PR}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" stroke="var(--border)" stroke-width="0.5"/>`;
   }
-  // Y axis labels (right = conv%)
+  // Y axis right (conv%)
   let yRight='';
   for(const v of [0,50,100]){
     const y=PT+cH-(v/100)*cH;
-    yRight+=`<text x="${W-PR+4}" y="${y+3}" font-size="7" fill="var(--blue)" font-family="inherit" opacity=".7">${v}%</text>`;
+    yRight+=`<text x="${(W-PR+4).toFixed(1)}" y="${(y+3).toFixed(1)}" font-size="7" fill="var(--blue)" font-family="inherit" opacity=".7">${v}%</text>`;
   }
 
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">
-    ${yLeft}${yRight}${bars}${convLine}${convDots}${xLabels}
+    ${yLeft}${yRight}${bars}${convLine}${convDots}${valLabels}${xLabels}
   </svg>`;
 }
 
@@ -771,6 +935,7 @@ function anSetMode(cab,mode){
 document.addEventListener('click',e=>{
   if(!e.target.closest('.af-wrap'))
     document.querySelectorAll('.af-drop').forEach(d=>d.classList.remove('show'));
+  if(e.target.id==='orderModal') closeOrderModal();
 });
 
 // Build full analytics section HTML
@@ -890,8 +1055,51 @@ function renderCab(cab){
   html+=buildAnalytics(rows,cab);
   html+=buildDayTable(days,cab);
   html+=buildDetailTable(rows,cab);
+  html+=buildReturnsTable(rows,cab);
 
   document.getElementById('app'+cab).innerHTML=html;
+}
+
+/* ═══ Returns / Brak table ═══ */
+function buildReturnsTable(allRows,cab){
+  const rets=allRows.filter(r=>r.status==='returned');
+  if(!rets.length) return `<div class="sec">
+    <div class="sh"><span class="st">↩ Брак / Возвраты</span><span class="sm2">0 заявок</span></div>
+    <div class="sw"><div class="em">Возвратов за выбранный период не найдено</div></div>
+  </div>`;
+
+  const sorted=[...rets].sort((a,b)=>(a.sale_date||'')<(b.sale_date||'')?1:-1);
+  const sumLoss=rets.reduce((s,r)=>s+(r.sale_price||0),0);
+
+  const rowsHtml=sorted.map(r=>{
+    const dc=r.days_to_sale!=null
+      ?(r.days_to_sale<=3?'<span class="days-chip" style="color:var(--green)">'+r.days_to_sale+' дн</span>'
+        :r.days_to_sale<=7?'<span class="days-chip" style="color:var(--amber)">'+r.days_to_sale+' дн</span>'
+        :'<span class="days-chip" style="color:var(--red)">'+r.days_to_sale+' дн</span>')
+      :'—';
+    return`<tr>
+      <td><span class="tp" style="white-space:nowrap">${ruDate(r.order_date)}</span> <span style="color:var(--ink3);font-size:10px">${r.order_time}</span></td>
+      <td><span class="art">${r.art}</span></td>
+      <td>${r.size}</td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.name}">${r.name}</td>
+      <td style="white-space:nowrap">${r.sale_date?ruDate(r.sale_date):'—'}</td>
+      <td style="font-weight:700;color:var(--red)">${r.sale_price!=null?fmtRub(r.sale_price):'—'}</td>
+      <td>${dc}</td>
+      <td style="font-size:11px;color:var(--ink3)">${r.wh}</td>
+      <td><span class="art" style="font-size:9px;cursor:pointer;text-decoration:underline dotted" onclick="searchById('${(r.srid||'').replace(/'/g,"\\'")}')" title="Найти полную карточку">${r.srid?r.srid.slice(0,18)+'…':'—'}</span></td>
+    </tr>`;
+  }).join('');
+
+  return `<div class="sec">
+    <div class="sh"><span class="st">↩ Брак / Возвраты</span><span class="sm2">${rets.length} заявок · потери ${fmtRub(sumLoss)}</span></div>
+    <div class="sw"><table>
+      <thead><tr>
+        <th>Дата заказа</th><th>Артикул</th><th>Размер</th><th>Товар</th>
+        <th>Дата возврата</th><th>Сумма</th><th>Дней до факта</th><th>Склад</th><th>SRID</th>
+      </tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table></div>
+  </div>`;
 }
 
 /* ═══ Day table ═══ */
