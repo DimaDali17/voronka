@@ -165,6 +165,9 @@ tbody tr:hover{background:var(--bg3)}
   <div class="fg"><div class="fl">Прокси 1 — для EF</div><input class="fi" id="sprx" value="https://wb-proxy.ooo6311ooo.workers.dev"></div>
   <div class="fg"><div class="fl">Прокси 2 — для EZFR (другой аккаунт CF)</div><input class="fi" id="sprx2" placeholder="https://wb-proxy-2.xxx.workers.dev"></div>
 
+  <div class="ssec">Заявки на возврат</div>
+  <div style="font-size:11px;color:var(--ink2);line-height:1.5;margin-bottom:10px">Чтобы видеть раздел «Заявки на возврат», у API-ключа должна быть включена категория <b>«Возвраты»</b>. Это отдельный токен — создайте новый: <b>Личный кабинет WB → Настройки → Доступ к API → Создать новый токен</b>, отметив категорию «Возвраты», и вставьте его выше вместо текущего ключа.</div>
+
   <button class="sbtn" onclick="doSave()">Сохранить</button>
   <div class="smsg" id="smsg"></div>
 </div>
@@ -330,16 +333,18 @@ async function wbGet(path,cab){
   const key  = cab===1?CFG.key1:CFG.key2;
   const proxy= (cab===2&&CFG.proxy2)?CFG.proxy2:CFG.proxy1;
   const url  = proxy+'?url='+encodeURIComponent('https://statistics-api.wildberries.ru'+path);
-  const waits=[3000,8000,20000];
+  const waits=[3000,8000,15000,25000,40000]; // больше попыток, паузы растут до 40с
   for(let i=0;i<=waits.length;i++){
-    const gap=Math.max(0,_last[cab]+1300-Date.now());
+    const gap=Math.max(0,_last[cab]+2500-Date.now()); // пауза между запросами увеличена 1.3с → 2.5с
     if(gap>0)await sleep(gap);
     let r,txt='';
     try{r=await fetch(url,{headers:{'X-WB-Token':key}});txt=await r.text();}
     catch(e){if(i===waits.length)throw new Error('Сеть/прокси: '+e.message);await sleep(waits[i]);continue;}
     _last[cab]=Date.now();
     if(r.status===429||r.status>=500||!txt.trim()){
-      if(i===waits.length)throw new Error('WB '+r.status+': не удалось получить данные после '+(waits.length+1)+' попыток');
+      if(i===waits.length)throw new Error('WB '+r.status+': лимит запросов не снялся после '+(waits.length+1)+' попыток (~2 мин). WB ограничивает частоту обращений к статистике — подождите 2-3 минуты и нажмите ↻ Загрузить ещё раз.');
+      const appEl=document.getElementById('app'+cab);
+      if(appEl) appEl.innerHTML=`<div class="lm"><span class="sp">↻</span> WB ограничил частоту запросов (429). Повтор ${i+1}/${waits.length+1} через ${Math.round(waits[i]/1000)}с...</div>`;
       const ra=parseInt(r.headers.get('retry-after')||'0',10);
       await sleep(ra>0?ra*1000:waits[i]);continue;
     }
@@ -371,7 +376,7 @@ async function wbReturnsGet(path,cab){
     catch(e){if(i===waits.length)throw new Error('Сеть/прокси: '+e.message);await sleep(waits[i]);continue;}
     _lastRet[cab]=Date.now();
     if(r.status===401||r.status===403){
-      throw new Error('Нет доступа (401/403) — у ключа нет категории «Возвраты» в настройках API WB');
+      throw new Error('Нет доступа (401/403) — у этого ключа не включена категория «Возвраты». Создайте новый токен: Личный кабинет WB → Настройки → Доступ к API → Создать новый токен, отметив категорию «Возвраты», и вставьте его в Настройках дашборда.');
     }
     if(r.status===404){
       throw new Error('404 — проверьте, что эндпоинт /api/v1/claims доступен через ваш прокси (returns-api.wildberries.ru)');
@@ -443,14 +448,32 @@ async function loadCab(cab,f,t){
 }
 
 /* ═══ Load claims (заявки на возврат) ═══
-   GET /api/v1/claims — отдаёт ВСЕ заявки за последние 14 дней одним списком,
-   формат ответа: { claims: [...], total: N }. Пагинации нет (если total
-   окажется больше длины claims — WB обрежет сам, мы это не контролируем).
+   GET /api/v1/claims требует обязательный параметр is_archive:
+     is_archive=false — активные (необработанные) заявки
+     is_archive=true  — архив (обработанные, за последние 3 месяца)
+   Возможна пагинация через take/skip (как в других WB-эндпоинтах) —
+   подстраховываемся: если первая страница вернула ровно take записей,
+   запрашиваем следующую, пока не получим меньше или пустой список.
+   Формат ответа: { claims: [...], total: N }.
 ═══ */
+async function fetchAllClaims(cab, isArchive){
+  const all=[]; let skip=0; const take=200; let guard=0;
+  while(guard<20){
+    const resp = await wbReturnsGet(`/api/v1/claims?is_archive=${isArchive}&take=${take}&skip=${skip}`, cab);
+    const list = Array.isArray(resp) ? resp : (resp.claims||[]);
+    all.push(...list);
+    if(list.length<take) break; // последняя страница
+    skip+=take; guard++;
+  }
+  return all;
+}
 async function loadClaims(cab){
-  const resp = await wbReturnsGet('/api/v1/claims', cab);
-  const list = Array.isArray(resp) ? resp : (resp.claims||[]);
-  RETURNS_DATA[cab] = { claims: list, total: resp.total??list.length, loadedAt: Date.now() };
+  const [activeList, archiveList] = await Promise.all([
+    fetchAllClaims(cab, false),
+    fetchAllClaims(cab, true)
+  ]);
+  const list = [...activeList, ...archiveList];
+  RETURNS_DATA[cab] = { claims: list, total: list.length, loadedAt: Date.now() };
   if(DATA[cab]) renderCab(cab);
 }
 
@@ -1272,7 +1295,7 @@ function toggleExpRet(cab){EXPRET[cab]=!EXPRET[cab];if(DATA[cab])renderCab(cab);
    status / status_ex — числовые коды; точные значения WB публикует
    нечасто и они могут меняться, поэтому показываем код "as is" плюс
    нашу лучшую расшифровку, и оставляем debug-дамп для сверки.
-   ВАЖНО: API отдаёт только заявки за последние 14 дней — это ограничение
+   ВАЖНО: запрос требует параметр is_archive — активные заявки (необработанные)
    самого WB, мы его обойти не можем.
 ═══ */
 const EXPCLM={1:false,2:false};
@@ -1303,13 +1326,13 @@ function buildClaimsTable(cab){
 
   if(!rd){
     return `<div class="sec">
-      <div class="sh"><span class="st">📮 Заявки на возврат · последние 14 дней</span></div>
+      <div class="sh"><span class="st">📮 Заявки на возврат · активные + архив (3 мес)</span></div>
       <div class="sw"><div class="lm"><span class="sp">↻</span> Загружаем заявки на возврат...</div></div>
     </div>`;
   }
   if(rd.error){
     return `<div class="sec">
-      <div class="sh"><span class="st">📮 Заявки на возврат · последние 14 дней</span></div>
+      <div class="sh"><span class="st">📮 Заявки на возврат · активные + архив (3 мес)</span></div>
       <div class="err-box">⚠️ ${rd.error}</div>
     </div>`;
   }
@@ -1317,8 +1340,8 @@ function buildClaimsTable(cab){
   const claims=rd.claims||[];
   if(!claims.length){
     return `<div class="sec">
-      <div class="sh"><span class="st">📮 Заявки на возврат · последние 14 дней</span><span class="sm2">0 заявок</span></div>
-      <div class="sw"><div class="em">Заявок на возврат за последние 14 дней не найдено</div></div>
+      <div class="sh"><span class="st">📮 Заявки на возврат · активные + архив (3 мес)</span><span class="sm2">0 заявок</span></div>
+      <div class="sw"><div class="em">Заявок на возврат не найдено</div></div>
     </div>`;
   }
 
@@ -1348,7 +1371,7 @@ function buildClaimsTable(cab){
     ?`<tr class="er"><td colspan="7"><button class="eb" onclick="toggleExpClm(${cab})">${EXPCLM[cab]?'▲ Свернуть':'▼ Показать все '+sorted.length+' заявок'}</button></td></tr>`:'';
 
   return `<div class="sec">
-    <div class="sh"><span class="st">📮 Заявки на возврат · последние 14 дней</span><span class="sm2">${claims.length} заявок · завершено: ${closed} · в работе: ${pending} · отклонено: ${rejected}</span></div>
+    <div class="sh"><span class="st">📮 Заявки на возврат · активные + архив (3 мес)</span><span class="sm2">${claims.length} заявок · завершено: ${closed} · в работе: ${pending} · отклонено: ${rejected}</span></div>
     <div class="sw"><table>
       <thead><tr>
         <th>ID заявки</th><th>Дата</th><th>nmId</th><th>Тип</th>
@@ -1356,7 +1379,7 @@ function buildClaimsTable(cab){
       </tr></thead>
       <tbody>${rowsHtml}${expBtn}</tbody>
     </table></div>
-    <div style="font-size:10px;color:var(--ink3);margin-top:8px">⚠️ WB API отдаёт заявки только за последние 14 дней — более старые не показываются принципиально (ограничение самого WB).</div>
+    <div style="font-size:10px;color:var(--ink3);margin-top:8px">⚠️ Показаны активные заявки (is_archive=false) и архив за последние ~3 месяца (is_archive=true) — более старые WB не хранит.</div>
   </div>`;
 }
 
