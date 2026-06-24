@@ -231,8 +231,6 @@ tbody tr:hover{background:var(--bg3)}
 let CFG = {key1:'', key2:'', proxy1:'https://wb-proxy.ooo6311ooo.workers.dev', proxy2:''};
 let DATA = {1:null, 2:null};
 let RETURNS_DATA = {1:null, 2:null};   // claims from Marketplace API
-let FIN_DATA = {1:null, 2:null};       // финансовый отчёт reportDetailByPeriod
-const EXPFIN = {1:false, 2:false};
 let CUR_TAB = 1;
 
 // Per-cabinet UI state
@@ -442,12 +440,6 @@ async function loadCab(cab,f,t){
       if(DATA[cab]) renderCab(cab);
     });
 
-    // Финансовый отчёт — тоже асинхронно, не блокирует
-    loadFinReport(cab, f, t).catch(e=>{
-      FIN_DATA[cab]={error:e.message};
-      if(DATA[cab]) renderCab(cab);
-    });
-
     renderCab(cab);
   }catch(e){
     document.getElementById(appId).innerHTML=`<div class="err-box">⚠️ Кабинет ${cab===1?'Easyform':'EZFR'}: ${e.message}</div>`;
@@ -485,161 +477,171 @@ async function loadClaims(cab){
 }
 
 
-/* ═══ Финансовый отчёт ═══
-   GET /api/v5/supplier/reportDetailByPeriod
-   Пагинация: передаём rrdid (последний id предыдущей страницы), limit=500.
-   Ключевые поля:
-     supplier_oper_name — тип операции (Продажа, Возврат, Логистика, Хранение, Штраф…)
-     sa_name           — артикул продавца
-     nm_id             — nmId товара
-     subject_name      — категория
-     retail_price_withdisc_rub — цена продажи
-     ppvz_for_pay      — к перечислению продавцу
-     delivery_rub      — стоимость логистики
-     penalty           — штраф
-     additional_payment— доплата
-     srid              — связь с заказом
-     date_from/date_to — диапазон недельного отчёта
+/* ═══ R-записи: разбор «почему так много возвратов» ═══
+   saleID=R в /supplier/sales — это НЕ только «покупатель вернул».
+   Сюда попадают: отмены невыкупленных заказов, логистические корректировки,
+   брак подтверждённый WB. Разделяем по разнице дат заказа и R-записи.
 ═══ */
-const FIN_OPER_GROUPS={
-  'продажа':         {group:'Продажи',     color:'var(--green)'},
-  'возврат':         {group:'Возвраты',    color:'var(--red)'},
-  'логистика':       {group:'Логистика',   color:'var(--amber)'},
-  'хранение':        {group:'Хранение',    color:'var(--amber)'},
-  'штраф':           {group:'Штрафы',      color:'var(--red)'},
-  'штрафы':          {group:'Штрафы',      color:'var(--red)'},
-  'удержание':       {group:'Удержания',   color:'var(--red)'},
-  'компенсация':     {group:'Компенсации', color:'var(--blue)'},
-  'коррекция':       {group:'Корректировки',color:'var(--ink3)'},
-  'авансовая оплата':{group:'Прочее',      color:'var(--ink3)'},
-};
-function finOperGroup(name){
-  if(!name) return {group:'Прочее',color:'var(--ink3)'};
-  const low=name.toLowerCase();
-  for(const [k,v] of Object.entries(FIN_OPER_GROUPS)){
-    if(low.includes(k)) return v;
-  }
-  return{group:name,color:'var(--ink3)'};
-}
+function buildRAnalysis(rows, cab){
+  const d=DATA[cab]; if(!d) return '';
+  const suf=s=>{if(!s)return'';const i=s.indexOf('.');return i>=0?s.slice(i+1):s;};
 
-async function loadFinReport(cab,dateFrom,dateTo){
-  FIN_DATA[cab]={loading:true};
-  if(DATA[cab]) renderCab(cab);
-
-  const rows=[]; let rrdid=0; let guard=0;
-  while(guard<30){
-    const path=`/api/v5/supplier/reportDetailByPeriod?dateFrom=${dateFrom}&dateTo=${dateTo}&limit=500&rrdid=${rrdid}`;
-    const resp=await wbGet(path,cab);
-    const list=Array.isArray(resp)?resp:[];
-    if(!list.length) break;
-    rows.push(...list);
-    const lastId=list[list.length-1].rrd_id||0;
-    if(lastId===rrdid||list.length<500) break;
-    rrdid=lastId; guard++;
-  }
-  FIN_DATA[cab]={rows,dateFrom,dateTo,loadedAt:Date.now()};
-  if(DATA[cab]) renderCab(cab);
-}
-
-function buildFinReport(cab){
-  const fd=FIN_DATA[cab];
-  if(!fd) return `<div class="sec">
-    <div class="sh"><span class="st">💰 Финансовый отчёт</span></div>
-    <div class="sw"><div class="lm"><span class="sp">↻</span> Загружаем финансовый отчёт...</div></div>
-  </div>`;
-  if(fd.loading) return `<div class="sec">
-    <div class="sh"><span class="st">💰 Финансовый отчёт</span></div>
-    <div class="sw"><div class="lm"><span class="sp">↻</span> Загружаем финансовый отчёт...</div></div>
-  </div>`;
-  if(fd.error) return `<div class="sec">
-    <div class="sh"><span class="st">💰 Финансовый отчёт</span></div>
-    <div class="err-box">⚠️ ${fd.error}</div>
-  </div>`;
-
-  const rows=fd.rows||[];
-  if(!rows.length) return `<div class="sec">
-    <div class="sh"><span class="st">💰 Финансовый отчёт</span></div>
-    <div class="sw"><div class="em">Нет данных финансового отчёта за выбранный период</div></div>
-  </div>`;
-
-  // Группировка по типу операции
-  const groups={};
-  let totalForPay=0, totalPenalty=0, totalLogistic=0, totalSales=0, totalReturns=0;
-  for(const r of rows){
-    const op=r.supplier_oper_name||'—';
-    const g=finOperGroup(op);
-    if(!groups[g.group]) groups[g.group]={name:g.group,color:g.color,count:0,forPay:0,penalty:0,logistic:0};
-    groups[g.group].count++;
-    groups[g.group].forPay+=(r.ppvz_for_pay||0);
-    groups[g.group].penalty+=(r.penalty||0);
-    groups[g.group].logistic+=(r.delivery_rub||0);
-    totalForPay+=(r.ppvz_for_pay||0);
-    totalPenalty+=(r.penalty||0);
-    totalLogistic+=(r.delivery_rub||0);
-    if(g.group==='Продажи') totalSales+=(r.ppvz_for_pay||0);
-    if(g.group==='Возвраты') totalReturns+=Math.abs(r.ppvz_for_pay||0);
+  // Индекс заказов по srid
+  const sridToOrder={};
+  for(const o of d.orders){
+    if(o.srid){sridToOrder[o.srid]=o;sridToOrder[suf(o.srid)]=o;}
   }
 
-  // Итоговые карточки
-  const netPay=totalForPay-totalPenalty;
-  const cards=`<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
-    <div class="mc"><div class="mc-label">К перечислению (итого)</div><div class="mc-val b" style="font-size:17px">${fmtRub(netPay)}</div><div class="mc-sub">${rows.length} строк отчёта</div></div>
-    <div class="mc"><div class="mc-label">Продажи</div><div class="mc-val g" style="font-size:17px">${fmtRub(totalSales)}</div></div>
-    <div class="mc"><div class="mc-label">Возвраты</div><div class="mc-val r" style="font-size:17px">−${fmtRub(totalReturns)}</div></div>
-    <div class="mc"><div class="mc-label">Логистика + Штрафы</div><div class="mc-val a" style="font-size:17px">−${fmtRub(totalLogistic+totalPenalty)}</div></div>
+  // Все R-записи из sales
+  const recs=d.sales.filter(s=>s.saleID&&s.saleID.startsWith('R'));
+  if(!recs.length) return `<div class="sec">
+    <div class="sh"><span class="st">🔬 Анализ R-записей (возвраты vs отмены)</span></div>
+    <div class="sw"><div class="em">R-записей в выбранном периоде нет</div></div>
   </div>`;
 
-  // Таблица по группам операций
-  const groupRows=Object.values(groups)
-    .sort((a,b)=>Math.abs(b.forPay)-Math.abs(a.forPay))
-    .map(g=>`<tr>
-      <td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${g.color};margin-right:6px"></span>${g.name}</td>
-      <td style="text-align:center">${g.count}</td>
-      <td style="font-weight:700;color:${g.forPay>=0?'var(--green)':'var(--red)'}">${fmtRub(g.forPay)}</td>
-      <td style="color:var(--amber)">${g.logistic>0?'−'+fmtRub(g.logistic):'—'}</td>
-      <td style="color:var(--red)">${g.penalty>0?'−'+fmtRub(g.penalty):'—'}</td>
-    </tr>`).join('');
+  let d0=0,d1_3=0,d4_21=0,d21plus=0,noOrder=0;
+  const d21plusList=[];
 
-  // Детальная таблица — первые 10 строк, сортировка по сумме
-  const LIMIT=10;
-  const detailRows=rows
-    .slice()
-    .sort((a,b)=>Math.abs(b.ppvz_for_pay||0)-Math.abs(a.ppvz_for_pay||0));
-  const show=EXPFIN[cab]?detailRows:detailRows.slice(0,LIMIT);
-  const detailHtml=show.map(r=>{
-    const g=finOperGroup(r.supplier_oper_name);
-    const pay=r.ppvz_for_pay||0;
-    return`<tr>
-      <td style="font-size:11px;color:var(--ink3)">${r.date_from?ruDateShort(r.date_from.slice(0,10)):r.create_dt?ruDateShort(r.create_dt.slice(0,10)):'—'}</td>
-      <td><span style="font-size:10px;padding:2px 6px;border-radius:10px;background:${g.color}22;color:${g.color};font-weight:700">${g.group}</span></td>
-      <td style="font-size:11px">${r.supplier_oper_name||'—'}</td>
-      <td><span class="art">${r.sa_name||'—'}</span></td>
-      <td>${r.subject_name||'—'}</td>
-      <td style="font-weight:700;color:${pay>=0?'var(--green)':'var(--red)'}">${fmtRub(pay)}</td>
-      <td style="color:var(--amber);font-size:11px">${r.delivery_rub?'−'+fmtRub(r.delivery_rub):'—'}</td>
-      <td style="color:var(--red);font-size:11px">${r.penalty?'−'+fmtRub(r.penalty):'—'}</td>
-    </tr>`;
-  }).join('');
+  for(const r of recs){
+    const o=r.srid?(sridToOrder[r.srid]||sridToOrder[suf(r.srid)]):null;
+    if(!o){noOrder++;continue;}
+    const diff=Math.round((new Date(r.date)-new Date(o.date))/864e5);
+    if(diff<=0)       d0++;
+    else if(diff<=3)  d1_3++;
+    else if(diff<=21) d4_21++;
+    else{
+      d21plus++;
+      d21plusList.push({r,o,diff});
+    }
+  }
 
-  const expBtn=detailRows.length>LIMIT
-    ?`<tr class="er"><td colspan="8"><button class="eb" onclick="toggleExpFin(${cab})">${EXPFIN[cab]?'▲ Свернуть':'▼ Все '+detailRows.length+' строк'}</button></td></tr>`:'';
+  const total=recs.length;
+  const pct=n=>total>0?Math.round(n/total*100):0;
+
+  // Бар-чарт по группам
+  const bars=[
+    {label:'0 дн — отмена в день заказа (не выехало)',n:d0,    color:'var(--ink3)'},
+    {label:'1–3 дн — не забрали с ПВЗ',              n:d1_3,  color:'var(--amber)'},
+    {label:'4–21 дн — долгое лежание на ПВЗ',         n:d4_21, color:'var(--amber)'},
+    {label:'>21 дн — реальный возврат после выкупа',  n:d21plus,color:'var(--red)'},
+    {label:'Нет совпадающего заказа в периоде',       n:noOrder,color:'var(--ink3)'},
+  ].map(b=>`<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+    <div style="width:280px;font-size:11px;color:var(--ink2);flex-shrink:0">${b.label}</div>
+    <div style="flex:1;background:var(--bg2);border-radius:3px;height:10px;overflow:hidden">
+      <div style="width:${pct(b.n)}%;height:100%;background:${b.color};border-radius:3px"></div>
+    </div>
+    <div style="width:80px;text-align:right;font-size:12px;font-weight:700">${b.n} <span style="color:var(--ink3);font-weight:400">(${pct(b.n)}%)</span></div>
+  </div>`).join('');
+
+  // Вывод — что это означает для белья
+  const realReturnPct=pct(d21plus);
+  let conclusion,conclusionCls;
+  if(realReturnPct<=5){
+    conclusion=`✅ Только ${realReturnPct}% — реальные возвраты после выкупа. Остальные ${100-realReturnPct}% «возвратов» в статистике — это фактически невыкупленные заказы (отмены), которые WB проводит через R-записи.`;
+    conclusionCls='var(--green)';
+  } else if(realReturnPct<=15){
+    conclusion=`⚠️ ${realReturnPct}% — возвраты после выкупа. Для невозвратной категории (бельё) это заявки на брак/подмену, одобренные WB. Стоит разобрать каждый случай.`;
+    conclusionCls='var(--amber)';
+  } else {
+    conclusion=`🚨 ${realReturnPct}% — высокий процент возвратов после выкупа. Требует изучения — возможно проблема с качеством или пересортом.`;
+    conclusionCls='var(--red)';
+  }
+
+  // Список реальных возвратов >21 дня
+  let realReturnRows='';
+  if(d21plusList.length){
+    realReturnRows=`<div class="sh" style="margin-top:14px"><span class="st">Реальные возвраты после выкупа (&gt;21 дня)</span><span class="sm2">${d21plusList.length} шт</span></div>
+    <div class="sw"><table>
+      <thead><tr><th>Дата заказа</th><th>Дата R-записи</th><th>Дней</th><th>Артикул</th><th>Размер</th><th>Сумма</th></tr></thead>
+      <tbody>${d21plusList.sort((a,b)=>b.diff-a.diff).slice(0,20).map(({r,o,diff})=>`<tr>
+        <td>${ruDate(o.date.slice(0,10))}</td>
+        <td>${ruDate(r.date.slice(0,10))}</td>
+        <td style="font-weight:700;color:var(--red)">${diff} дн</td>
+        <td><span class="art">${r.supplierArticle||'—'}</span></td>
+        <td>${r.techSize||'—'}</td>
+        <td>${r.finishedPrice?fmtRub(r.finishedPrice):'—'}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+  }
+
+  // По дням — все R-записи (не только >21 дн, а все: отмены тоже важны)
+  const byDay={};
+  for(const r of recs){
+    const day=(r.date||'').slice(0,10);
+    if(!byDay[day]) byDay[day]={day,total:0,cancel:0,real:0};
+    const o=r.srid?(sridToOrder[r.srid]||sridToOrder[suf(r.srid)]):null;
+    const diff=o?Math.round((new Date(r.date)-new Date(o.date))/864e5):null;
+    byDay[day].total++;
+    if(diff==null||diff<=21) byDay[day].cancel++;
+    else byDay[day].real++;
+  }
+  const dayRows=Object.values(byDay).sort((a,b)=>a.day<b.day?1:-1);
+  const dayTable=`<div class="sh" style="margin-top:14px">
+    <span class="st">По дням (все R-записи)</span>
+    <span class="sm2">${dayRows.length} дней</span>
+  </div>
+  <div class="sw"><table>
+    <thead><tr>
+      <th>Дата R-записи</th>
+      <th style="text-align:center">Всего</th>
+      <th style="text-align:center">Отмены / невыкупы (≤21 дн)</th>
+      <th style="text-align:center">Реальные возвраты (&gt;21 дн)</th>
+    </tr></thead>
+    <tbody>${dayRows.map(d=>`<tr>
+      <td><span class="tp">${ruDate(d.day)}</span></td>
+      <td style="text-align:center;font-weight:700">${d.total}</td>
+      <td style="text-align:center;color:var(--amber)">${d.cancel}</td>
+      <td style="text-align:center;color:${d.real>0?'var(--red)':'var(--ink3)'};font-weight:${d.real>0?700:400}">${d.real||'—'}</td>
+    </tr>`).join('')}</tbody>
+  </table></div>`;
+
+  // По артикулам
+  const byArt={};
+  for(const r of recs){
+    const art=r.supplierArticle||'—';
+    if(!byArt[art]) byArt[art]={art,total:0,cancel:0,real:0};
+    const o=r.srid?(sridToOrder[r.srid]||sridToOrder[suf(r.srid)]):null;
+    const diff=o?Math.round((new Date(r.date)-new Date(o.date))/864e5):null;
+    byArt[art].total++;
+    if(diff==null||diff<=21) byArt[art].cancel++;
+    else byArt[art].real++;
+  }
+  const artRows=Object.values(byArt).sort((a,b)=>b.total-a.total);
+  const artTable=`<div class="sh" style="margin-top:14px">
+    <span class="st">По артикулам</span>
+    <span class="sm2">${artRows.length} артикулов</span>
+  </div>
+  <div class="sw"><table>
+    <thead><tr>
+      <th>Артикул</th>
+      <th style="text-align:center">Всего R-записей</th>
+      <th style="text-align:center">Отмены / невыкупы (≤21 дн)</th>
+      <th style="text-align:center">Реальные возвраты (&gt;21 дн)</th>
+    </tr></thead>
+    <tbody>${artRows.map(a=>`<tr>
+      <td><span class="art">${a.art}</span></td>
+      <td style="text-align:center;font-weight:700">${a.total}</td>
+      <td style="text-align:center;color:var(--amber)">${a.cancel}</td>
+      <td style="text-align:center;color:${a.real>0?'var(--red)':'var(--ink3)'};font-weight:${a.real>0?700:400}">${a.real||'—'}</td>
+    </tr>`).join('')}</tbody>
+  </table></div>`;
 
   return `<div class="sec">
-    <div class="sh"><span class="st">💰 Финансовый отчёт · ${ruDateShort(fd.dateFrom)} — ${ruDateShort(fd.dateTo)}</span><span class="sm2">${rows.length} строк · данные за полные недели в периоде</span></div>
-    ${cards}
-    <div class="sw" style="margin-bottom:12px"><table>
-      <thead><tr><th>Тип операции</th><th>Строк</th><th>К перечислению</th><th>Логистика</th><th>Штрафы</th></tr></thead>
-      <tbody>${groupRows}</tbody>
-    </table></div>
-    <div class="sh" style="margin-top:14px"><span class="st">Детализация (по сумме)</span></div>
-    <div class="sw"><table>
-      <thead><tr><th>Период</th><th>Группа</th><th>Операция</th><th>Артикул</th><th>Категория</th><th>К оплате</th><th>Логистика</th><th>Штраф</th></tr></thead>
-      <tbody>${detailHtml}${expBtn}</tbody>
-    </table></div>
-    <div style="font-size:10px;color:var(--ink3);margin-top:8px">⚠️ Отчёт формируется WB еженедельно — данные за текущую незакрытую неделю могут отсутствовать. Период привязан к датам выбранного периода заказов.</div>
+    <div class="sh">
+      <span class="st">🔬 Анализ R-записей — возвраты vs отмены</span>
+      <span class="sm2">${total} R-записей в загруженных продажах</span>
+    </div>
+    <div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px">
+      ${bars}
+    </div>
+    <div style="padding:10px 14px;border-radius:8px;border:1px solid ${conclusionCls}33;background:${conclusionCls}11;font-size:12px;color:var(--ink2);line-height:1.5;margin-bottom:4px">
+      ${conclusion}
+    </div>
+    ${dayTable}
+    ${artTable}
+    ${realReturnRows}
   </div>`;
 }
-function toggleExpFin(cab){EXPFIN[cab]=!EXPFIN[cab];if(DATA[cab])renderCab(cab);}
 
 /* ═══ Funnel matching ═══
    Ключ: srid (Sale Request ID) — совпадает точно у 100% выкупленных заказов.
@@ -1431,7 +1433,7 @@ function renderCab(cab){
   html+=buildDayTable(days,cab);
   html+=buildDetailTable(rows,cab);
   html+=buildClaimsTable(cab);
-  html+=buildFinReport(cab);
+  html+=buildRAnalysis(rows,cab);
 
   document.getElementById('app'+cab).innerHTML=html;
 }
