@@ -231,6 +231,8 @@ tbody tr:hover{background:var(--bg3)}
 let CFG = {key1:'', key2:'', proxy1:'https://wb-proxy.ooo6311ooo.workers.dev', proxy2:''};
 let DATA = {1:null, 2:null};
 let RETURNS_DATA = {1:null, 2:null};   // claims from Marketplace API
+let FIN_DATA = {1:null, 2:null};       // финансовый отчёт reportDetailByPeriod
+const EXPFIN = {1:false, 2:false};
 let CUR_TAB = 1;
 
 // Per-cabinet UI state
@@ -238,7 +240,6 @@ const SORT  = {1:{col:'date',dir:-1}, 2:{col:'date',dir:-1}};
 const SORT2 = {1:{col:'order_date',dir:-1}, 2:{col:'order_date',dir:-1}};
 const EXPAND= {1:false, 2:false};
 const EXPDAY= {1:false, 2:false};
-const EXPRET= {1:false, 2:false};
 const FILT  = {1:{art:'',status:'all'}, 2:{art:'',status:'all'}};
 
 // Analytics state per cabinet
@@ -441,6 +442,12 @@ async function loadCab(cab,f,t){
       if(DATA[cab]) renderCab(cab);
     });
 
+    // Финансовый отчёт — тоже асинхронно, не блокирует
+    loadFinReport(cab, f, t).catch(e=>{
+      FIN_DATA[cab]={error:e.message};
+      if(DATA[cab]) renderCab(cab);
+    });
+
     renderCab(cab);
   }catch(e){
     document.getElementById(appId).innerHTML=`<div class="err-box">⚠️ Кабинет ${cab===1?'Easyform':'EZFR'}: ${e.message}</div>`;
@@ -477,6 +484,162 @@ async function loadClaims(cab){
   if(DATA[cab]) renderCab(cab);
 }
 
+
+/* ═══ Финансовый отчёт ═══
+   GET /api/v5/supplier/reportDetailByPeriod
+   Пагинация: передаём rrdid (последний id предыдущей страницы), limit=500.
+   Ключевые поля:
+     supplier_oper_name — тип операции (Продажа, Возврат, Логистика, Хранение, Штраф…)
+     sa_name           — артикул продавца
+     nm_id             — nmId товара
+     subject_name      — категория
+     retail_price_withdisc_rub — цена продажи
+     ppvz_for_pay      — к перечислению продавцу
+     delivery_rub      — стоимость логистики
+     penalty           — штраф
+     additional_payment— доплата
+     srid              — связь с заказом
+     date_from/date_to — диапазон недельного отчёта
+═══ */
+const FIN_OPER_GROUPS={
+  'продажа':         {group:'Продажи',     color:'var(--green)'},
+  'возврат':         {group:'Возвраты',    color:'var(--red)'},
+  'логистика':       {group:'Логистика',   color:'var(--amber)'},
+  'хранение':        {group:'Хранение',    color:'var(--amber)'},
+  'штраф':           {group:'Штрафы',      color:'var(--red)'},
+  'штрафы':          {group:'Штрафы',      color:'var(--red)'},
+  'удержание':       {group:'Удержания',   color:'var(--red)'},
+  'компенсация':     {group:'Компенсации', color:'var(--blue)'},
+  'коррекция':       {group:'Корректировки',color:'var(--ink3)'},
+  'авансовая оплата':{group:'Прочее',      color:'var(--ink3)'},
+};
+function finOperGroup(name){
+  if(!name) return {group:'Прочее',color:'var(--ink3)'};
+  const low=name.toLowerCase();
+  for(const [k,v] of Object.entries(FIN_OPER_GROUPS)){
+    if(low.includes(k)) return v;
+  }
+  return{group:name,color:'var(--ink3)'};
+}
+
+async function loadFinReport(cab,dateFrom,dateTo){
+  FIN_DATA[cab]={loading:true};
+  if(DATA[cab]) renderCab(cab);
+
+  const rows=[]; let rrdid=0; let guard=0;
+  while(guard<30){
+    const path=`/api/v5/supplier/reportDetailByPeriod?dateFrom=${dateFrom}&dateTo=${dateTo}&limit=500&rrdid=${rrdid}`;
+    const resp=await wbGet(path,cab);
+    const list=Array.isArray(resp)?resp:[];
+    if(!list.length) break;
+    rows.push(...list);
+    const lastId=list[list.length-1].rrd_id||0;
+    if(lastId===rrdid||list.length<500) break;
+    rrdid=lastId; guard++;
+  }
+  FIN_DATA[cab]={rows,dateFrom,dateTo,loadedAt:Date.now()};
+  if(DATA[cab]) renderCab(cab);
+}
+
+function buildFinReport(cab){
+  const fd=FIN_DATA[cab];
+  if(!fd) return `<div class="sec">
+    <div class="sh"><span class="st">💰 Финансовый отчёт</span></div>
+    <div class="sw"><div class="lm"><span class="sp">↻</span> Загружаем финансовый отчёт...</div></div>
+  </div>`;
+  if(fd.loading) return `<div class="sec">
+    <div class="sh"><span class="st">💰 Финансовый отчёт</span></div>
+    <div class="sw"><div class="lm"><span class="sp">↻</span> Загружаем финансовый отчёт...</div></div>
+  </div>`;
+  if(fd.error) return `<div class="sec">
+    <div class="sh"><span class="st">💰 Финансовый отчёт</span></div>
+    <div class="err-box">⚠️ ${fd.error}</div>
+  </div>`;
+
+  const rows=fd.rows||[];
+  if(!rows.length) return `<div class="sec">
+    <div class="sh"><span class="st">💰 Финансовый отчёт</span></div>
+    <div class="sw"><div class="em">Нет данных финансового отчёта за выбранный период</div></div>
+  </div>`;
+
+  // Группировка по типу операции
+  const groups={};
+  let totalForPay=0, totalPenalty=0, totalLogistic=0, totalSales=0, totalReturns=0;
+  for(const r of rows){
+    const op=r.supplier_oper_name||'—';
+    const g=finOperGroup(op);
+    if(!groups[g.group]) groups[g.group]={name:g.group,color:g.color,count:0,forPay:0,penalty:0,logistic:0};
+    groups[g.group].count++;
+    groups[g.group].forPay+=(r.ppvz_for_pay||0);
+    groups[g.group].penalty+=(r.penalty||0);
+    groups[g.group].logistic+=(r.delivery_rub||0);
+    totalForPay+=(r.ppvz_for_pay||0);
+    totalPenalty+=(r.penalty||0);
+    totalLogistic+=(r.delivery_rub||0);
+    if(g.group==='Продажи') totalSales+=(r.ppvz_for_pay||0);
+    if(g.group==='Возвраты') totalReturns+=Math.abs(r.ppvz_for_pay||0);
+  }
+
+  // Итоговые карточки
+  const netPay=totalForPay-totalPenalty;
+  const cards=`<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
+    <div class="mc"><div class="mc-label">К перечислению (итого)</div><div class="mc-val b" style="font-size:17px">${fmtRub(netPay)}</div><div class="mc-sub">${rows.length} строк отчёта</div></div>
+    <div class="mc"><div class="mc-label">Продажи</div><div class="mc-val g" style="font-size:17px">${fmtRub(totalSales)}</div></div>
+    <div class="mc"><div class="mc-label">Возвраты</div><div class="mc-val r" style="font-size:17px">−${fmtRub(totalReturns)}</div></div>
+    <div class="mc"><div class="mc-label">Логистика + Штрафы</div><div class="mc-val a" style="font-size:17px">−${fmtRub(totalLogistic+totalPenalty)}</div></div>
+  </div>`;
+
+  // Таблица по группам операций
+  const groupRows=Object.values(groups)
+    .sort((a,b)=>Math.abs(b.forPay)-Math.abs(a.forPay))
+    .map(g=>`<tr>
+      <td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${g.color};margin-right:6px"></span>${g.name}</td>
+      <td style="text-align:center">${g.count}</td>
+      <td style="font-weight:700;color:${g.forPay>=0?'var(--green)':'var(--red)'}">${fmtRub(g.forPay)}</td>
+      <td style="color:var(--amber)">${g.logistic>0?'−'+fmtRub(g.logistic):'—'}</td>
+      <td style="color:var(--red)">${g.penalty>0?'−'+fmtRub(g.penalty):'—'}</td>
+    </tr>`).join('');
+
+  // Детальная таблица — первые 10 строк, сортировка по сумме
+  const LIMIT=10;
+  const detailRows=rows
+    .slice()
+    .sort((a,b)=>Math.abs(b.ppvz_for_pay||0)-Math.abs(a.ppvz_for_pay||0));
+  const show=EXPFIN[cab]?detailRows:detailRows.slice(0,LIMIT);
+  const detailHtml=show.map(r=>{
+    const g=finOperGroup(r.supplier_oper_name);
+    const pay=r.ppvz_for_pay||0;
+    return`<tr>
+      <td style="font-size:11px;color:var(--ink3)">${r.date_from?ruDateShort(r.date_from.slice(0,10)):r.create_dt?ruDateShort(r.create_dt.slice(0,10)):'—'}</td>
+      <td><span style="font-size:10px;padding:2px 6px;border-radius:10px;background:${g.color}22;color:${g.color};font-weight:700">${g.group}</span></td>
+      <td style="font-size:11px">${r.supplier_oper_name||'—'}</td>
+      <td><span class="art">${r.sa_name||'—'}</span></td>
+      <td>${r.subject_name||'—'}</td>
+      <td style="font-weight:700;color:${pay>=0?'var(--green)':'var(--red)'}">${fmtRub(pay)}</td>
+      <td style="color:var(--amber);font-size:11px">${r.delivery_rub?'−'+fmtRub(r.delivery_rub):'—'}</td>
+      <td style="color:var(--red);font-size:11px">${r.penalty?'−'+fmtRub(r.penalty):'—'}</td>
+    </tr>`;
+  }).join('');
+
+  const expBtn=detailRows.length>LIMIT
+    ?`<tr class="er"><td colspan="8"><button class="eb" onclick="toggleExpFin(${cab})">${EXPFIN[cab]?'▲ Свернуть':'▼ Все '+detailRows.length+' строк'}</button></td></tr>`:'';
+
+  return `<div class="sec">
+    <div class="sh"><span class="st">💰 Финансовый отчёт · ${ruDateShort(fd.dateFrom)} — ${ruDateShort(fd.dateTo)}</span><span class="sm2">${rows.length} строк · данные за полные недели в периоде</span></div>
+    ${cards}
+    <div class="sw" style="margin-bottom:12px"><table>
+      <thead><tr><th>Тип операции</th><th>Строк</th><th>К перечислению</th><th>Логистика</th><th>Штрафы</th></tr></thead>
+      <tbody>${groupRows}</tbody>
+    </table></div>
+    <div class="sh" style="margin-top:14px"><span class="st">Детализация (по сумме)</span></div>
+    <div class="sw"><table>
+      <thead><tr><th>Период</th><th>Группа</th><th>Операция</th><th>Артикул</th><th>Категория</th><th>К оплате</th><th>Логистика</th><th>Штраф</th></tr></thead>
+      <tbody>${detailHtml}${expBtn}</tbody>
+    </table></div>
+    <div style="font-size:10px;color:var(--ink3);margin-top:8px">⚠️ Отчёт формируется WB еженедельно — данные за текущую незакрытую неделю могут отсутствовать. Период привязан к датам выбранного периода заказов.</div>
+  </div>`;
+}
+function toggleExpFin(cab){EXPFIN[cab]=!EXPFIN[cab];if(DATA[cab])renderCab(cab);}
 
 /* ═══ Funnel matching ═══
    Ключ: srid (Sale Request ID) — совпадает точно у 100% выкупленных заказов.
@@ -679,6 +842,41 @@ function showDebug(cab){
       txt+='\n';
     } else {
       txt+=`  ПРОДАЖА: не найдена\n`;
+    }
+  }
+
+  txt+='\n╔══ АНАЛИЗ R-ЗАПИСЕЙ (почему много «возвратов») ══╗\n';
+  const recs=d.sales.filter(s=>s.saleID&&s.saleID.startsWith('R'));
+  txt+=`  Всего R-записей в продажах: ${recs.length}\n\n`;
+  if(recs.length){
+    // Сортируем по разнице дат продажи и соответствующего заказа
+    const sridToOrder={};
+    const suf=s=>{if(!s)return'';const i=s.indexOf('.');return i>=0?s.slice(i+1):s;};
+    for(const o of d.orders){if(o.srid){sridToOrder[o.srid]=o;sridToOrder[suf(o.srid)]=o;}}
+
+    let sameDay=0,within3=0,within21=0,after21=0,noOrder=0;
+    for(const r of recs){
+      const o=r.srid?(sridToOrder[r.srid]||sridToOrder[suf(r.srid)]):null;
+      if(!o){noOrder++;continue;}
+      const diff=Math.round((new Date(r.date)-new Date(o.date))/864e5);
+      if(diff===0)sameDay++;
+      else if(diff<=3)within3++;
+      else if(diff<=21)within21++;
+      else after21++;
+    }
+    txt+=`  0 дней между заказом и R-записью (отмена в день заказа):  ${sameDay}\n`;
+    txt+=`  1-3 дня  (не забрали с ПВЗ / быстрая отмена):            ${within3}\n`;
+    txt+=`  4-21 дней (долгое лежание на ПВЗ без выкупа):            ${within21}\n`;
+    txt+=`  >21 дня  (реальный возврат после выкупа / брак):          ${after21}\n`;
+    txt+=`  Нет совпадающего заказа в выбранном периоде:              ${noOrder}\n\n`;
+    txt+=`  ВЫВОД: если >21 дней мало — большинство «возвратов» это фактически отмены (не-выкупы),\n`;
+    txt+=`  которые WB проводит через R-записи. Реальные возвраты после выкупа — только >21 дней.\n\n`;
+    txt+='  Первые 5 R-записей с деталями:\n';
+    for(const r of recs.slice(0,5)){
+      const o=r.srid?(sridToOrder[r.srid]||sridToOrder[suf(r.srid)]):null;
+      const diff=o?Math.round((new Date(r.date)-new Date(o.date))/864e5):null;
+      txt+=`  R: ${r.date}  saleID=${r.saleID}  art=${r.supplierArticle}  sz=${r.techSize}\n`;
+      txt+=`     заказ: ${o?o.date:'не найден'}  разница: ${diff!=null?diff+'дн':'—'}\n`;
     }
   }
 
@@ -1232,60 +1430,13 @@ function renderCab(cab){
   html+=buildAnalytics(rows,cab);
   html+=buildDayTable(days,cab);
   html+=buildDetailTable(rows,cab);
-  html+=buildReturnsTable(rows,cab);
   html+=buildClaimsTable(cab);
+  html+=buildFinReport(cab);
 
   document.getElementById('app'+cab).innerHTML=html;
 }
 
 /* ═══ Returns / Brak table ═══ */
-function buildReturnsTable(allRows,cab){
-  const rets=allRows.filter(r=>r.status==='returned');
-  if(!rets.length) return `<div class="sec">
-    <div class="sh"><span class="st">↩ Брак / Возвраты</span><span class="sm2">0 заявок</span></div>
-    <div class="sw"><div class="em">Возвратов за выбранный период не найдено</div></div>
-  </div>`;
-
-  const sorted=[...rets].sort((a,b)=>(a.sale_date||'')<(b.sale_date||'')?1:-1);
-  const sumLoss=rets.reduce((s,r)=>s+(r.sale_price||0),0);
-
-  const LIMIT=10;
-  const show=EXPRET[cab]?sorted:sorted.slice(0,LIMIT);
-
-  const rowsHtml=show.map(r=>{
-    const dc=r.days_to_sale!=null
-      ?(r.days_to_sale<=3?'<span class="days-chip" style="color:var(--green)">'+r.days_to_sale+' дн</span>'
-        :r.days_to_sale<=7?'<span class="days-chip" style="color:var(--amber)">'+r.days_to_sale+' дн</span>'
-        :'<span class="days-chip" style="color:var(--red)">'+r.days_to_sale+' дн</span>')
-      :'—';
-    return`<tr>
-      <td><span class="tp" style="white-space:nowrap">${ruDate(r.order_date)}</span> <span style="color:var(--ink3);font-size:10px">${r.order_time}</span></td>
-      <td><span class="art">${r.art}</span></td>
-      <td>${r.size}</td>
-      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.name}">${r.name}</td>
-      <td style="white-space:nowrap">${r.sale_date?ruDate(r.sale_date):'—'}</td>
-      <td style="font-weight:700;color:var(--red)">${r.sale_price!=null?fmtRub(r.sale_price):'—'}</td>
-      <td>${dc}</td>
-      <td style="font-size:11px;color:var(--ink3)">${r.wh}</td>
-      <td><span class="art" style="font-size:9px;cursor:pointer;text-decoration:underline dotted" onclick="searchById('${(r.srid||'').replace(/'/g,"\\'")}')" title="Найти полную карточку">${r.srid?r.srid.slice(0,18)+'…':'—'}</span></td>
-    </tr>`;
-  }).join('');
-
-  const expBtn=sorted.length>LIMIT
-    ?`<tr class="er"><td colspan="9"><button class="eb" onclick="toggleExpRet(${cab})">${EXPRET[cab]?'▲ Свернуть':'▼ Показать все '+sorted.length+' заявок'}</button></td></tr>`:'';
-
-  return `<div class="sec">
-    <div class="sh"><span class="st">↩ Брак / Возвраты</span><span class="sm2">${rets.length} заявок · потери ${fmtRub(sumLoss)}</span></div>
-    <div class="sw"><table>
-      <thead><tr>
-        <th>Дата заказа</th><th>Артикул</th><th>Размер</th><th>Товар</th>
-        <th>Дата возврата</th><th>Сумма</th><th>Дней до факта</th><th>Склад</th><th>SRID</th>
-      </tr></thead>
-      <tbody>${rowsHtml}${expBtn}</tbody>
-    </table></div>
-  </div>`;
-}
-function toggleExpRet(cab){EXPRET[cab]=!EXPRET[cab];if(DATA[cab])renderCab(cab);}
 
 /* ═══ Claims table (Заявки на возврат, returns-api.wildberries.ru) ═══
    Реальная схема ответа (подтверждено документацией WB):
@@ -1299,7 +1450,9 @@ function toggleExpRet(cab){EXPRET[cab]=!EXPRET[cab];if(DATA[cab])renderCab(cab);
    самого WB, мы его обойти не можем.
 ═══ */
 const EXPCLM={1:false,2:false};
+const CLMFILT={1:'all',2:'all'};
 function toggleExpClm(cab){EXPCLM[cab]=!EXPCLM[cab];if(DATA[cab])renderCab(cab);}
+function setClmFilt(cab,t){CLMFILT[cab]=t;EXPCLM[cab]=false;if(DATA[cab])renderCab(cab);}
 
 // status: основной статус заявки (по наблюдаемым значениям в практике продавцов)
 const CLAIM_STATUS_MAP={
@@ -1345,10 +1498,44 @@ function buildClaimsTable(cab){
     </div>`;
   }
 
-  const sorted=[...claims].sort((a,b)=>(a.delivery_dt||a.create_dt||'')<(b.delivery_dt||b.create_dt||'')?1:-1);
-  const closed = claims.filter(c=>c.status===2||c.status===4).length;
-  const pending = claims.filter(c=>c.status===0||c.status===1).length;
-  const rejected = claims.filter(c=>c.status===3).length;
+  // Сводка по типам причин
+  const byType={};
+  for(const c of claims){
+    const t=c.claim_type??'?';
+    byType[t]=(byType[t]||0)+1;
+  }
+  const typeTotal=claims.length;
+  const typeSummary=Object.entries(byType)
+    .sort((a,b)=>b[1]-a[1])
+    .map(([t,n])=>{
+      const lbl=CLAIM_TYPE_MAP[t]||('Тип '+t);
+      const pct=Math.round(n/typeTotal*100);
+      const col=t==1?'var(--red)':t==2?'var(--amber)':'var(--ink3)';
+      return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+        <div style="width:130px;font-size:11px;color:var(--ink2);flex-shrink:0">${lbl}</div>
+        <div style="flex:1;background:var(--bg2);border-radius:3px;height:8px;overflow:hidden">
+          <div style="width:${pct}%;height:100%;background:${col};border-radius:3px"></div>
+        </div>
+        <div style="width:60px;text-align:right;font-size:11px;font-weight:700">${n} <span style="color:var(--ink3);font-weight:400">(${pct}%)</span></div>
+      </div>`;
+    }).join('');
+
+  // Фильтр по типу — сохраняется в state
+  const clmFilt=CLMFILT[cab]??'all';
+  const filtered=clmFilt==='all'?claims:claims.filter(c=>(c.claim_type??'?')==clmFilt);
+  const sorted=[...filtered].sort((a,b)=>(a.delivery_dt||a.create_dt||'')<(b.delivery_dt||b.create_dt||'')?1:-1);
+
+  const closed  = filtered.filter(c=>c.status===2||c.status===4).length;
+  const pending = filtered.filter(c=>c.status===0||c.status===1).length;
+  const rejected= filtered.filter(c=>c.status===3).length;
+
+  // Кнопки фильтра по типу
+  const typeFilterBtns=['all',...Object.keys(byType).sort()].map(t=>{
+    const lbl=t==='all'?'Все типы':(CLAIM_TYPE_MAP[t]||('Тип '+t));
+    const cnt=t==='all'?claims.length:(byType[t]||0);
+    const on=clmFilt===t?'on':'';
+    return `<button class="preset ${on}" onclick="setClmFilt(${cab},'${t}')" style="font-size:10px">${lbl} (${cnt})</button>`;
+  }).join('');
 
   const LIMIT=10;
   const show=EXPCLM[cab]?sorted:sorted.slice(0,LIMIT);
@@ -1371,15 +1558,23 @@ function buildClaimsTable(cab){
     ?`<tr class="er"><td colspan="7"><button class="eb" onclick="toggleExpClm(${cab})">${EXPCLM[cab]?'▲ Свернуть':'▼ Показать все '+sorted.length+' заявок'}</button></td></tr>`:'';
 
   return `<div class="sec">
-    <div class="sh"><span class="st">📮 Заявки на возврат · активные + архив (3 мес)</span><span class="sm2">${claims.length} заявок · завершено: ${closed} · в работе: ${pending} · отклонено: ${rejected}</span></div>
+    <div class="sh">
+      <span class="st">📮 Заявки на возврат · активные + архив (3 мес)</span>
+      <span class="sm2">${filtered.length} из ${claims.length} · завершено: ${closed} · в работе: ${pending} · отклонено: ${rejected}</span>
+    </div>
+    <div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:12px">
+      <div style="font-size:9px;font-weight:700;color:var(--ink3);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px">Разбивка по причинам возврата</div>
+      ${typeSummary}
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${typeFilterBtns}</div>
     <div class="sw"><table>
       <thead><tr>
-        <th>ID заявки</th><th>Дата</th><th>nmId</th><th>Тип</th>
+        <th>ID заявки</th><th>Дата</th><th>nmId</th><th>Причина</th>
         <th>Статус</th><th>Комментарий покупателя</th><th>Ответ WB</th>
       </tr></thead>
       <tbody>${rowsHtml}${expBtn}</tbody>
     </table></div>
-    <div style="font-size:10px;color:var(--ink3);margin-top:8px">⚠️ Показаны активные заявки (is_archive=false) и архив за последние ~3 месяца (is_archive=true) — более старые WB не хранит.</div>
+    <div style="font-size:10px;color:var(--ink3);margin-top:8px">⚠️ Показаны активные заявки и архив за ~3 месяца — WB не хранит данные старше этого срока в /api/v1/claims.</div>
   </div>`;
 }
 
